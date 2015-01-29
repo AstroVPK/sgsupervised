@@ -1,5 +1,6 @@
 import os
 import pickle
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -7,54 +8,60 @@ from sklearn import preprocessing
 from sklearn.svm import SVC 
 from sklearn.linear_model import LogisticRegression 
 
-def loadData(inputFile = "/Users/josegarmilla/Data/HSC/sgClassCosmosDeepCoaddSrcMultiBandAll.pkl"):
-    if os.path.isfile(inputFile):
-        print "Loading data from {0}...".format(inputFile)
-        with open(inputFile, 'rb') as f:
-            xs = ()
-            ys = ()
-            while 1:
-                try:
-                    x, y = pickle.load(f)
-                    xs += (x,); ys += (y,)
-                except EOFError:
-                    break
-        X = np.concatenate(xs)
-        Y = np.concatenate(ys)
-        print "We have {0} training objects".format(len(X))
-    else:
-        print "Can't find file"
-        sys.exit(0)
-    return X, Y
+import lsst.afw.table as afwTable
 
-def preprocessData(X, Y, withMags=True, withShape=True, standard=True):
-    nBands = (len(X[0])-3)/3
-    nColors = nBands - 1
-    psfOffset = 3
-    cmOffset = psfOffset + nBands
-    exOffset = cmOffset + nBands
-    
-    if withMags and withShape:
-        X = X[:,cmOffset:].astype('float')
-    elif withMags:
-        X = X[:,cmOffset:cmOffset+5].astype('float')
-    elif withShape:
-        X = X[:,exOffset:].astype('float')
-    else:
+def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True):
+    f = cat.get('cmodel.flux.'+band)
+    fErr = cat.get('cmodel.flux.err.'+band)
+    f0 = cat.get('flux.zeromag.'+band)
+    fPsf = cat.get('flux.psf.'+band)
+    ex = -2.5*np.log10(fPsf/f)
+    if checkExtendedness:
+        # Discard objects with extreme extendedness
+        good = np.logical_and(good, ex < 5.0)
+    if checkSNR:
+        good = np.logical_and(good, f/fErr > 5.0)
+    rat = f/f0
+    mag = -2.5*np.log10(rat)
+    if checkExtendedness:
+        return mag, ex, good
+    return mag, ex
+
+def loadData(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withShape=True,
+             bands=['g', 'r', 'i', 'z', 'y'], standard=True):
+    if (not withMags) and (not withShape):
         raise ValueError("I need to use either shapes or magnitudes to train")
-    Y = Y.astype('int')
+    cat = afwTable.SourceCatalog.readFits(inputFile)
+    Y = cat.get('stellar')
+    nBands = len(bands)
+    shape = (len(cat), nBands*(int(withMags)+int(withShape)))
+    X = np.zeros(shape)
+    good=True
+    for i, b in enumerate(bands):
+        mag, ex, good = getMags(cat, b, good=good)
+        if withMags:
+            good = np.logical_and(good, np.logical_not(np.isnan(mag)))
+            good = np.logical_and(good, np.logical_not(np.isinf(mag)))
+            X[:, i] = mag
+        if withShape:
+            good = np.logical_and(good, np.logical_not(np.isnan(ex)))
+            good = np.logical_and(good, np.logical_not(np.isinf(ex)))
+            X[:, nBands+i] = ex
+    X = X[good]; Y = Y[good]
     if standard:
         X = preprocessing.scale(X)
     return X, Y
-    
-def selectTrainTest(X, nTrain = 20000, nTest = 27753):
+
+def selectTrainTest(X, nTrain = 0.8, nTest = 0.2):
+    nTotal = len(X)
+    nTrain = int(nTrain*nTotal)
+    nTest = nTotal - nTrain
     indexes = np.random.choice(len(X), nTrain+nTest, replace=False)
     trainIndexes = (indexes[:nTrain],)
     testIndexes = (indexes[nTrain:nTrain+nTest],)
     return trainIndexes, testIndexes
 
 def getClassifier(clfType = 'svc', *args, **kargs):
-
     if clfType == 'svc':
         return SVC(*args, **kargs)
     elif clfType == 'logit':
@@ -151,10 +158,9 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=19.0, maxMag=26.0, 
 
 def run():
     X, Y = loadData()
-    X_proc, Y_proc = preprocessData(X, Y)
     trainIndexes, testIndexes = selectTrainTest(X)
-    X_train = X_proc[trainIndexes]; Y_train = Y_proc[trainIndexes]
-    X_test = X_proc[testIndexes]; Y_test = Y_proc[testIndexes]
+    X_train = X[trainIndexes]; Y_train = Y[trainIndexes]
+    X_test = X[testIndexes]; Y_test = Y[testIndexes]
     clf = getClassifier(clfType='svc')
     clf.fit(X_train, Y_train)
     score = clf.score(X_test, Y_test)
