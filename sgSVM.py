@@ -143,9 +143,8 @@ def getClassifier(clfType = 'svc', *args, **kargs):
         raise ValueError("I don't know the classifier type {0}".format(clfType))
 
 def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, num=200,
-                doProb=False, probThreshold=0.5, title='SVM Linear', bands=['g', 'r', 'i', 'z', 'y'],
+                doProb=False, probThreshold=0.5, bands=['g', 'r', 'i', 'z', 'y'],
                 doMagColors=True):
-    #import ipdb; ipdb.set_trace()
     nBands = len(bands)
     nColors = nBands - 1
 
@@ -205,46 +204,90 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
             galCompl[i] = float(nGalsCorrect)/nGalsTrue
         if nGalsPredict > 0:
             galPurity[i] = float(nGalsCorrect)/nGalsPredict
+    if doProb:
+        return mags, starCompl, starPurity, galCompl, galPurity, Probs, ProbsMin, ProbsMax
+    else:
+        return mags, starCompl, starPurity, galCompl, galPurity
 
-    fig = plt.figure()
+def plotMagCuts(clf=None, X_test=None, Y_test=None, X=None, fig=None, linestyle='-', mags=None,
+                starCompl=None, starPurity=None, galCompl=None, Probs=None, ProbsMin=None,
+                ProbsMax=None, galPurity=None, title='SVM Linear', **kargs):
+    if 'doProb' in kargs:
+        doProb = kargs['doProb']
+    else:
+        doProb = False
+    if 'minMag' in kargs:
+        minMag = kargs['minMag']
+    else:
+        minMag = 18.0
+    if 'maxMag' in kargs:
+        maxMag = kargs['maxMag']
+    else:
+        maxMag = 27.0
+    if doProb:
+        if mags == None or starCompl == None or starPurity == None or galCompl == None\
+           or galPurity == None or Probs == None or ProbsMin == None or ProbsMax == None:
+            mags, starCompl, starPurity, galCompl, galPurity, Probs, ProbsMin, ProbsMax = testMagCuts(clf, X_test, Y_test, X, **kargs)
+    else:
+        if mags == None or starCompl == None or starPurity == None or galCompl == None or galPurity == None:
+            mags, starCompl, starPurity, galCompl, galPurity = testMagCuts(clf, X_test, Y_test, X, **kargs)
+    if not fig:
+        fig = plt.figure()
+        ax = plt.subplot(1, 2, 0)
+        ax.set_title(title + " (Stars)", fontsize=18)
+        ax.set_xlabel("Mag Cut Center", fontsize=18)
+        ax.set_ylabel("Star Scores", fontsize=18)
+        ax.set_xlim(minMag, maxMag)
+        ax.set_ylim(0.0, 1.0)
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+        hadFig = False
+    else:
+        ax = fig.get_axes()[0]
+        hadFig = True
+    ax.plot(mags, starCompl, 'r', label='Completeness', linestyle=linestyle)
+    ax.plot(mags, starPurity, 'b', label='Purity', linestyle=linestyle)
+    if not hadFig:
+        ax.legend(loc='lower left', fontsize=18)
     
-    ax = plt.subplot(1, 2, 0)
-    ax.set_title(title + " (Stars)", fontsize=18)
-    ax.set_xlabel("Mag Cut Center", fontsize=18)
-    ax.set_ylabel("Star Scores", fontsize=18)
-    ax.set_xlim(minMag, maxMag)
-    ax.set_ylim(0.0, 1.0)
-    for tick in ax.xaxis.get_major_ticks():
-        tick.label.set_fontsize(18)
-    for tick in ax.yaxis.get_major_ticks():
-        tick.label.set_fontsize(18)
-    ax.plot(mags, starCompl, 'r', label='Completeness')
-    ax.plot(mags, starPurity, 'b', label='Purity')
-    ax.legend(loc='lower left', fontsize=18)
-    
-    ax = plt.subplot(1, 2, 1)
-    ax.set_title(title + " (Galaxies)", fontsize=18)
-    ax.set_xlabel("Mag Cut Center", fontsize=18)
-    ax.set_ylabel("Galaxy Scores", fontsize=18)
-    ax.set_xlim(minMag, maxMag)
-    ax.set_ylim(0.0, 1.0)
-    for tick in ax.xaxis.get_major_ticks():
-        tick.label.set_fontsize(18)
-    for tick in ax.yaxis.get_major_ticks():
-        tick.label.set_fontsize(18)
-    ax.plot(mags, galCompl, 'r', label='Completeness')
-    ax.plot(mags, galPurity, 'b', label='Purity')
-    ax.legend(loc='lower left', fontsize=18)
+    if not hadFig:
+        ax = plt.subplot(1, 2, 1)
+        ax.set_title(title + " (Galaxies)", fontsize=18)
+        ax.set_xlabel("Mag Cut Center", fontsize=18)
+        ax.set_ylabel("Galaxy Scores", fontsize=18)
+        ax.set_xlim(minMag, maxMag)
+        ax.set_ylim(0.0, 1.0)
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+    else:
+        ax = plt.subplot(1, 2, 1)
+    ax.plot(mags, galCompl, 'r', label='Completeness', linestyle=linestyle)
+    ax.plot(mags, galPurity, 'b', label='Purity', linestyle=linestyle)
+    if not hadFig:
+        ax.legend(loc='lower left', fontsize=18)
     
     if doProb:
-        fig, ax  = plt.subplots(1)
-        plt.title("Predicted Stellar Probabilities for Real Stars", fontsize=18)
-        plt.xlabel("MagCutsCenter", fontsize=18)
+        probs = clf.predict_proba(X_test)
+        figProb, ax  = plt.subplots(1)
+        plt.title("Logistic Regression", fontsize=18)
+        plt.xlabel("Magnitude", fontsize=18)
         plt.ylabel("P(Star)", fontsize=18)
-        ax.plot(mags, Probs, 'k')
-        ax.fill_between(mags, ProbsMin, ProbsMax, facecolor='grey', alpha=0.5, doMagColors=doMagColors)
+        ax.scatter(X[:, 0][np.logical_not(Y_test)], probs[:,1][np.logical_not(Y_test)], color='red', marker=".", s=1, label='Galaxies')
+        ax.scatter(X[:, 0][Y_test], probs[:,1][Y_test], color='blue', marker=".", s=1, label='Stars')
+        ax.fill_between(mags, ProbsMin, ProbsMax, facecolor='grey', alpha=0.5)
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
 
-    plt.show()
+    if doProb:
+        return fig, figProb
+    else:
+        return fig
 
 def run(doMagColors=True):
     X, Y = loadData(doMagColors=doMagColors)
