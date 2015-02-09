@@ -8,6 +8,7 @@ from scipy.misc import comb
 from sklearn import preprocessing
 from sklearn.svm import SVC, LinearSVC 
 from sklearn.linear_model import LogisticRegression 
+from sklearn.grid_search import GridSearchCV
 
 import lsst.afw.table as afwTable
 
@@ -276,13 +277,16 @@ def plotMagCuts(clf=None, X_test=None, Y_test=None, X=None, fig=None, linestyle=
         plt.title("Logistic Regression", fontsize=18)
         plt.xlabel("Magnitude", fontsize=18)
         plt.ylabel("P(Star)", fontsize=18)
-        ax.scatter(X[:, 0][np.logical_not(Y_test)], probs[:,1][np.logical_not(Y_test)], color='red', marker=".", s=1, label='Galaxies')
-        ax.scatter(X[:, 0][Y_test], probs[:,1][Y_test], color='blue', marker=".", s=1, label='Stars')
-        ax.fill_between(mags, ProbsMin, ProbsMax, facecolor='grey', alpha=0.5)
+        ax.set_xlim(minMag, maxMag)
+        ax.set_ylim(0.0, 1.0)
+        ax.scatter(X[:, 0][np.logical_not(Y_test)], probs[:,1][np.logical_not(Y_test)], color='red', marker=".", s=3, label='Galaxies')
+        ax.scatter(X[:, 0][Y_test], probs[:,1][Y_test], color='blue', marker=".", s=3, label='Stars')
+        #ax.fill_between(mags, ProbsMin, ProbsMax, facecolor='grey', alpha=0.5)
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(18)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(18)
+        ax.legend(loc='lower left', fontsize=18)
 
     if doProb:
         return fig, figProb
