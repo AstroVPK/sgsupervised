@@ -91,11 +91,13 @@ def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True):
     return mag, ex
 
 def loadData(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withShape=True,
-             bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True):
+             bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None):
     if (not withMags) and (not withShape):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
         raise ValueError("I need to have magnitudes to do magnitude color mode")
+    if (not withMags) and (magCut != None):
+        raise ValueError("I need to have magnitudes to do magnitude cuts")
     cat = afwTable.SourceCatalog.readFits(inputFile)
     Y = cat.get('stellar')
     nBands = len(bands)
@@ -115,6 +117,10 @@ def loadData(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=
                 X[:, nBands+i] = ex
             else:
                 X[:, i] = ex
+    if magCut != None:
+        mag, ex, good = getMags(cat, 'r', good=good)
+        good = np.logical_and(good, mag >= magCut[0])
+        good = np.logical_and(good, mag <= magCut[1])
     X = X[good]; Y = Y[good]
     if doMagColors:
         magIdx = bands.index('r')
@@ -293,17 +299,27 @@ def plotMagCuts(clf=None, X_test=None, Y_test=None, X=None, fig=None, linestyle=
     else:
         return fig
 
-def run(doMagColors=True):
-    X, Y = loadData(doMagColors=doMagColors)
+def run(doMagColors=True, clfType='svm', param_grid={'C':[0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0]},
+        magCut=None, doProb=False):
+    X, Y = loadData(doMagColors=doMagColors, magCut=magCut)
     trainIndexes, testIndexes = selectTrainTest(X)
     X_scaled = preprocessing.scale(X)
     X_train = X_scaled[trainIndexes]; Y_train = Y[trainIndexes]
     X_test = X_scaled[testIndexes]; Y_test = Y[testIndexes]
-    clf = getClassifier(clfType='svc', kernel='linear')
+    estimator = getClassifier(clfType=clfType)
+    clf = GridSearchCV(estimator, param_grid)
     clf.fit(X_train, Y_train)
     score = clf.score(X_test, Y_test)
     print "score=", score
-    testMagCuts(clf, X_test, Y_test, X[testIndexes], title='SVM RBF', doProb=False)
+    plotMagCuts(clf, X_test, Y_test, X[testIndexes], title=clfType, doProb=doProb)
+    print clf.best_params_
+    coef = clf.best_estimator_.coef_; intercept = clf.best_estimator_.intercept_
+    mu = np.mean(X, axis=0)
+    std = np.std(X, axis=0)
+    coef = coef/std
+    intercept = intercept - np.sum(coef*mu/std)
+    plt.show()
+    return clf, X_train, Y_train, X_test, Y_test, coef, intercept
 
 if __name__ == '__main__':
     run()
