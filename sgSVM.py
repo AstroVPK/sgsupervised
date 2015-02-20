@@ -73,25 +73,43 @@ def plotMagEx(cat, band, withHSTLabels=True, magThreshold=23.5, exThreshold=0.04
     plt.legend(loc=1, fontsize=18)
     return fig
 
-def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True):
-    f = cat.get('cmodel.flux.'+band)
-    fErr = cat.get('cmodel.flux.err.'+band)
-    f0 = cat.get('flux.zeromag.'+band)
-    fPsf = cat.get('flux.psf.'+band)
-    ex = -2.5*np.log10(fPsf/f)
+def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType='hsc'):
+    if catType == 'hsc':
+        f = cat.get('cmodel.flux.'+band)
+        fErr = cat.get('cmodel.flux.err.'+band)
+        f0 = cat.get('flux.zeromag.'+band)
+        fPsf = cat.get('flux.psf.'+band)
+        ex = -2.5*np.log10(fPsf/f)
+        rat = f/f0
+        mag = -2.5*np.log10(rat)
+        if checkSNR:
+            good = np.logical_and(good, f/fErr > 5.0)
+        if checkExtendedness:
+            # Discard objects with extreme extendedness
+            good = np.logical_and(good, ex < 5.0)
+        if checkExtendedness or checkSNR:
+            return mag, ex, good
+    elif catType == 'sdss':
+        mag = cat.get('cModelMag.'+band)
+        magPsf = cat.get('psfMag.'+band)
+        ex = magPsf-mag
     if checkExtendedness:
         # Discard objects with extreme extendedness
         good = np.logical_and(good, ex < 5.0)
-    if checkSNR:
-        good = np.logical_and(good, f/fErr > 5.0)
-    rat = f/f0
-    mag = -2.5*np.log10(rat)
-    if checkExtendedness:
-        return mag, ex, good
+    else:
+        raise ValueError("Unkown catalog type {0}".format(catTYpe))
     return mag, ex
 
-def loadData(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withShape=True,
-             bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None):
+def loadData(catType='hsc', **kargs):
+    if catType == 'hsc':
+        return _loadDataHSC(**kargs)
+    elif catType == 'sdss':
+        return _loadDataSDSS(**kargs)
+    else:
+        raise ValueError("Unkown catalog type {0}".format(catType))
+
+def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withShape=True,
+                 bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None):
     if (not withMags) and (not withShape):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
@@ -130,6 +148,42 @@ def loadData(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=
             X[:,i] = Xtemp[:,i-1] - Xtemp[:,i]
     return X, Y
 
+def _loadDataSDSS(inputFile = "sgSDSS.fits", withMags=True, withShape=True,
+                  bands=['u', 'g', 'r', 'i', 'z'], doMagColors=True, magCut=None):
+    if (not withMags) and (not withShape):
+        raise ValueError("I need to use either shapes or magnitudes to train")
+    if (not withMags) and (doMagColors):
+        raise ValueError("I need to have magnitudes to do magnitude color mode")
+    if (not withMags) and (magCut != None):
+        raise ValueError("I need to have magnitudes to do magnitude cuts")
+    cat = afwTable.SimpleCatalog.readFits(inputFile)
+    Y = cat.get('stellar')
+    nBands = len(bands)
+    shape = (len(cat), nBands*(int(withMags)+int(withShape)))
+    X = np.zeros(shape)
+    for i, b in enumerate(bands):
+        mag, ex = getMags(cat, b, catType='sdss')
+        if withMags:
+            X[:, i] = mag
+        if withShape:
+            if withMags:
+                X[:, nBands+i] = ex
+            else:
+                X[:, i] = ex
+    if magCut != None:
+        good = True
+        mag, ex = getMags(cat, 'r', catType='sdss')
+        good = np.logical_and(good, mag >= magCut[0])
+        good = np.logical_and(good, mag <= magCut[1])
+        X = X[good]; Y = Y[good]
+    if doMagColors:
+        magIdx = bands.index('r')
+        Xtemp = X.copy()
+        X[:,0] = Xtemp[:,magIdx] #TODO: Make it possible to use other bands seamlessly
+        for i in range(1,len(bands)):
+            X[:,i] = Xtemp[:,i-1] - Xtemp[:,i]
+    return X, Y
+
 def selectTrainTest(X, nTrain = 0.8, nTest = 0.2):
     nTotal = len(X)
     nTrain = int(nTrain*nTotal)
@@ -151,10 +205,12 @@ def getClassifier(clfType = 'svc', *args, **kargs):
 
 def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, num=200,
                 doProb=False, probThreshold=0.5, bands=['g', 'r', 'i', 'z', 'y'],
-                doMagColors=True):
+                doMagColors=True, Y_predict=None):
     nBands = len(bands)
     nColors = nBands - 1
 
+    if Y_predict is not None:
+        print "I won't use the classifier that you passed, instead I'll used the predicted labels that you passed"
     mags = np.linspace(minMag, maxMag, num=num)
     starCompl = np.zeros(mags.shape)
     starPurity = np.zeros(mags.shape)
@@ -172,6 +228,8 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
         X_cuts = X[idxs]
         X_test_cuts = X_test[idxs]
         Y_test_cuts = Y_test[idxs]
+        if Y_predict is not None:
+            Y_predict_cuts = Y_predict[idxs]
         if doMagColors:
             idxs = np.where(X_cuts[:,0] > mag - magWidth/2)
         else:
@@ -179,11 +237,14 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
         X_cuts = X_cuts[idxs]
         X_test_cuts = X_test_cuts[idxs]
         Y_test_cuts = Y_test_cuts[idxs]
+        if Y_predict is not None:
+            Y_predict_cuts = Y_predict_cuts[idxs]
         starIdxsTrue = np.where(Y_test_cuts == 1)
         galIdxsTrue = np.where(Y_test_cuts == 0)
-        Y_predict = clf.predict(X_test_cuts)
-        starIdxsPredict = np.where(Y_predict == 1)
-        galIdxsPredict = np.where(Y_predict == 0)
+        if Y_predict is None:
+            Y_predict_cuts = clf.predict(X_test_cuts)
+        starIdxsPredict = np.where(Y_predict_cuts == 1)
+        galIdxsPredict = np.where(Y_predict_cuts == 0)
         if isinstance(clf, LogisticRegression) and doProb:
             cutProbs = clf.predict_proba(X_test_cuts)[:,1]
             Probs[i] = np.mean(cutProbs[starIdxsTrue])
@@ -193,15 +254,15 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
             ProbsMax[i] = np.mean(cutProbs[starIdxsTrue][maxIdxs])
             starIdxsPredict = np.where(cutProbs > probThreshold)
             galIdxsPredict = np.where(cutProbs <= probThreshold)
-            Y_predict[starIdxsPredict] = 1
-            Y_predict[galIdxsPredict] = 0
+            Y_predict_cuts[starIdxsPredict] = 1
+            Y_predict_cuts[galIdxsPredict] = 0
 
         nStarsTrue = np.sum(Y_test_cuts)
-        nStarsCorrect = np.sum(Y_predict[starIdxsTrue])
-        nStarsPredict = np.sum(Y_predict)
+        nStarsCorrect = np.sum(Y_predict_cuts[starIdxsTrue])
+        nStarsPredict = np.sum(Y_predict_cuts)
         nGalsTrue = len(Y_test_cuts) - nStarsTrue
-        nGalsCorrect = len(galIdxsTrue[0]) - np.sum(Y_predict[galIdxsTrue])
-        nGalsPredict = len(Y_predict) - nStarsPredict
+        nGalsCorrect = len(galIdxsTrue[0]) - np.sum(Y_predict_cuts[galIdxsTrue])
+        nGalsPredict = len(Y_predict_cuts) - nStarsPredict
 
         if nStarsTrue > 0:
             starCompl[i] = float(nStarsCorrect)/nStarsTrue
@@ -299,9 +360,9 @@ def plotMagCuts(clf=None, X_test=None, Y_test=None, X=None, fig=None, linestyle=
     else:
         return fig
 
-def run(doMagColors=True, clfType='svm', param_grid={'C':[0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0]},
-        magCut=None, doProb=False):
-    X, Y = loadData(doMagColors=doMagColors, magCut=magCut)
+def run(doMagColors=True, clfType='svc', param_grid={'C':[0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0]},
+        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc'):
+    X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut)
     trainIndexes, testIndexes = selectTrainTest(X)
     X_scaled = preprocessing.scale(X)
     X_train = X_scaled[trainIndexes]; Y_train = Y[trainIndexes]
@@ -316,10 +377,11 @@ def run(doMagColors=True, clfType='svm', param_grid={'C':[0.1, 1.0, 10.0, 100.0,
     coef = clf.best_estimator_.coef_; intercept = clf.best_estimator_.intercept_
     mu = np.mean(X, axis=0)
     std = np.std(X, axis=0)
-    coef = coef/std
-    intercept = intercept - np.sum(coef*mu/std)
+    #coef = coef/std
+    #intercept = intercept - np.sum(coef*mu/std)
     plt.show()
-    return clf, X_train, Y_train, X_test, Y_test, coef, intercept
+    #return clf, X_train, Y_train, X_test, Y_test, coef, intercept
+    return clf, X_train, Y_train, X_test, Y_test
 
 if __name__ == '__main__':
     run()
