@@ -93,9 +93,6 @@ def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType
         mag = cat.get('cModelMag.'+band)
         magPsf = cat.get('psfMag.'+band)
         ex = magPsf-mag
-    if checkExtendedness:
-        # Discard objects with extreme extendedness
-        good = np.logical_and(good, ex < 5.0)
     else:
         raise ValueError("Unkown catalog type {0}".format(catTYpe))
     return mag, ex
@@ -360,28 +357,37 @@ def plotMagCuts(clf=None, X_test=None, Y_test=None, X=None, fig=None, linestyle=
     else:
         return fig
 
-def run(doMagColors=True, clfType='svc', param_grid={'C':[0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0]},
-        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc'):
+def run(doMagColors=True, clfType='svc', param_grid={'C':[1.0, 10.0, 100.0, 1000.0], 'gamma':[0.1, 1.0, 10.0], 'kernel':['rbf']},
+        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc', n_jobs=4):
     X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut)
     trainIndexes, testIndexes = selectTrainTest(X)
     X_scaled = preprocessing.scale(X)
     X_train = X_scaled[trainIndexes]; Y_train = Y[trainIndexes]
     X_test = X_scaled[testIndexes]; Y_test = Y[testIndexes]
     estimator = getClassifier(clfType=clfType)
-    clf = GridSearchCV(estimator, param_grid)
+    clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
     clf.fit(X_train, Y_train)
     score = clf.score(X_test, Y_test)
     print "score=", score
-    plotMagCuts(clf, X_test, Y_test, X[testIndexes], title=clfType, doProb=doProb)
+    #plotMagCuts(clf, X_test, Y_test, X[testIndexes], title=clfType, doProb=doProb)
+    print "The best estimator parameters are"
     print clf.best_params_
-    coef = clf.best_estimator_.coef_; intercept = clf.best_estimator_.intercept_
-    mu = np.mean(X, axis=0)
-    std = np.std(X, axis=0)
+    #coef = clf.best_estimator_.coef_; intercept = clf.best_estimator_.intercept_
+    #mu = np.mean(X, axis=0)
+    #std = np.std(X, axis=0)
     #coef = coef/std
     #intercept = intercept - np.sum(coef*mu/std)
-    plt.show()
+    #plt.show()
     #return clf, X_train, Y_train, X_test, Y_test, coef, intercept
-    return clf, X_train, Y_train, X_test, Y_test
+    #return clf, X_train, Y_train, X_test, Y_test
 
 if __name__ == '__main__':
-    run()
+    parser = argparse.ArgumentParser(description="Build the extreme deconvolution model..")
+    parser.add_argument('--clfType', default='svc', type=str,
+                        help='Type of classifier to use')
+    parser.add_argument('--inputFile', default='sgClassCosmosDeepCoaddSrcMultiBandAll.fits', type=str,
+                        help='File containing the input catalog')
+    parser.add_argument('--catType', default='hsc', type=str,
+                        help='If `hsc` assume the input file is an hsc catalog, `sdss` assume the input file is an sdss catalog.')
+    kargs = vars(parser.parse_args())
+    run(**kargs)
