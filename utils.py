@@ -12,6 +12,49 @@ def getGood(cat, band):
     good = np.logical_and(True, ext < 5.0)
     return good
 
+def makeExtSeeingSnrPlot(cat, band, size=1, withLabels=False, fontSize=18):
+    if not isinstance(cat, afwTable.tableLib.SourceCatalog):
+        cat = afwTable.SourceCatalog.readFits(cat)
+    flux = cat.get('cmodel.flux.'+band)
+    fluxPsf = cat.get('flux.psf.'+band)
+    ext = -2.5*np.log10(fluxPsf/flux)
+    fluxErr = cat.get('cmodel.flux.err.'+band)
+    snr = flux/fluxErr
+    seeing = cat.get('seeing.'+band)
+    good = getGood(cat, band)
+    if withLabels:
+        stellar = cat.get('stellar')
+
+    fig = plt.figure()
+
+    axSeeing = fig.add_subplot(1, 2, 1)
+    axSnr = fig.add_subplot(1, 2, 2)
+    axSeeing.set_xlabel('Seeing (arcseconds)', fontsize=fontSize)
+    axSnr.set_xlabel('S/N', fontsize=fontSize)
+    axSeeing.set_ylabel('Extendedness', fontsize=fontSize)
+    axSnr.set_ylabel('Extendedness', fontsize=fontSize)
+    #axSeeing.set_xlim((0.69, 0.82))
+    axSnr.set_xlim((1.0, 30.0))
+    axSeeing.set_ylim((-0.1, 4.0))
+    axSnr.set_ylim((-0.1, 4.0))
+    for ax in [axSeeing, axSnr]:
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    if withLabels:
+        stars = np.logical_and(good, stellar)
+        gals = np.logical_and(good, np.logical_not(stellar))
+        axSeeing.scatter(seeing[gals], ext[gals], marker='.', s=size, color='red', label='Galaxies')
+        axSeeing.scatter(seeing[stars], ext[stars], marker='.', s=size, color='blue', label='Stars')
+        axSnr.scatter(snr[gals], ext[gals], marker='.', s=size, color='red', label='Galaxies')
+        axSnr.scatter(snr[stars], ext[stars], marker='.', s=size, color='blue', label='Stars')
+    else:
+        axSeeing.scatter(seeing[good], ext[good], marker='.', s=size)
+        axSnr.scatter(snr[good], ext[good], marker='.', s=size)
+
+    return fig
+
 def makeMagSnrPlot(cat, band, size=1, log=True):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
