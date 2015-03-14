@@ -12,6 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.grid_search import GridSearchCV
 
 import lsst.afw.table as afwTable
+import lsst.afw.geom as afwGeom
 
 def nterms(q, d):
     nterms = 1
@@ -74,6 +75,23 @@ def plotMagEx(cat, band, withHSTLabels=True, magThreshold=23.5, exThreshold=0.04
     plt.legend(loc=1, fontsize=18)
     return fig
 
+def getShape(cat, band, type):
+    q = np.zeros((len(cat),))
+    rDet = np.zeros(q.shape)
+    for i, record in enumerate(cat): 
+        ellipse = afwGeom.ellipses.Axes(record.get('cmodel.'+type + '.ellipse.' + band))
+        A = ellipse.getA(); B = ellipse.getB()
+        q[i] = B/A
+        rDet[i] = np.sqrt(A*B)
+    return q, rDet
+
+def getMag(cat, band, magType):
+    f = cat.get(magType + '.flux.' + band)
+    f0 = cat.get('flux.zeromag.' + band)
+    rat = f/f0
+    mag = -2.5*np.log10(rat)
+    return mag
+
 def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType='hsc'):
     if catType == 'hsc':
         f = cat.get('cmodel.flux.'+band)
@@ -83,20 +101,22 @@ def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType
         ex = -2.5*np.log10(fPsf/f)
         rat = f/f0
         mag = -2.5*np.log10(rat)
+        snr = f/fErr
         if checkSNR:
-            good = np.logical_and(good, f/fErr > 5.0)
+            good = np.logical_and(good, snr > 5.0)
         if checkExtendedness:
             # Discard objects with extreme extendedness
             good = np.logical_and(good, ex < 5.0)
         if checkExtendedness or checkSNR:
-            return mag, ex, good
+            return mag, ex, snr, good
+        return mag, ex, snr
     elif catType == 'sdss':
         mag = cat.get('cModelMag.'+band)
         magPsf = cat.get('psfMag.'+band)
         ex = magPsf-mag
     else:
         raise ValueError("Unkown catalog type {0}".format(catTYpe))
-    return mag, ex
+        return mag, ex
 
 def loadData(catType='hsc', **kargs):
     if catType == 'hsc':
@@ -106,9 +126,11 @@ def loadData(catType='hsc', **kargs):
     else:
         raise ValueError("Unkown catalog type {0}".format(catType))
 
-def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withShape=True,
-                 bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None):
-    if (not withMags) and (not withShape):
+def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withExt=True,
+                 bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None, withDepth=False,
+                 withSeeing=False, withDevShape=False, withExpShape=False, withDevMag=False,
+                 withExpMag=False, withFracDev=False):
+    if (not withMags) and (not withExt):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
         raise ValueError("I need to have magnitudes to do magnitude color mode")
@@ -117,22 +139,85 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withM
     cat = afwTable.SourceCatalog.readFits(inputFile)
     Y = cat.get('stellar')
     nBands = len(bands)
-    shape = (len(cat), nBands*(int(withMags)+int(withShape)))
+    nFeatures = nBands*(int(withMags) + int(withExt) + int(withDepth) + int(withSeeing) +\
+                        2*int(withDevShape) +2*int(withExpShape) + int(withDevMag) +\
+                        int(withExpMag) + int(withFracDev))
+    featCount = 0
+    if withMags:
+        magOffset=0
+        featCount += 1
+    if withExt:
+        extOffset = featCount*nBands
+        featCount += 1
+    if withDepth:
+        depthOffset = featCount*nBands
+        featCount += 1
+    if withSeeing:
+        seeingOffset = featCount*nBands
+        featCount += 1
+    if withDevShape:
+        devShapeOffset = featCount*nBands
+        featCount += 2
+    if withExpShape:
+        expShapeOffset = featCount*nBands
+        featCount += 2
+    if withDevMag:
+        devMagOffset = featCount*nBands
+        featCount += 1
+    if withExpMag:
+        expMagOffset = featCount*nBands
+        featCount += 1
+    if withFracDev:
+        fracDevOffset = featCount*nBands
+        featCount += 1
+
+    assert nBands*featCount == nFeatures
+   
+    shape = (len(cat), nFeatures)
     X = np.zeros(shape)
     good=True
     for i, b in enumerate(bands):
-        mag, ex, good = getMags(cat, b, good=good)
+        mag, ex, snr, good = getMags(cat, b, good=good)
         if withMags:
             good = np.logical_and(good, np.logical_not(np.isnan(mag)))
             good = np.logical_and(good, np.logical_not(np.isinf(mag)))
             X[:, i] = mag
-        if withShape:
+        if withExt:
             good = np.logical_and(good, np.logical_not(np.isnan(ex)))
             good = np.logical_and(good, np.logical_not(np.isinf(ex)))
-            if withMags:
-                X[:, nBands+i] = ex
-            else:
-                X[:, i] = ex
+            X[:, extOffset+i] = ex
+        if withDepth:
+            good = np.logical_and(good, np.isfinite(snr))
+            X[:, depthOffset+i] = snr
+        if withSeeing:
+            seeing = cat.get('seeing.'+b)
+            good = np.logical_and(good, np.isfinite(seeing))
+            X[:, seeingOffset+i] = seeing 
+        if withDevShape:
+            q, hlr = getShape(cat, b, 'dev')
+            good = np.logical_and(good, np.isfinite(q))
+            good = np.logical_and(good, np.isfinite(hlr))
+            X[:, devShapeOffset+i] = q
+            X[:, devShapeOffset+nBands+i] = hlr
+        if withExpShape:
+            q, hlr = getShape(cat, b, 'exp')
+            good = np.logical_and(good, np.isfinite(q))
+            good = np.logical_and(good, np.isfinite(hlr))
+            X[:, expShapeOffset+i] = q
+            X[:, expShapeOffset+nBands+i] = hlr
+        if withDevMag:
+            devMag = getMag(cat, b, 'cmodel.dev')
+            good = np.logical_and(good, np.isfinite(devMag))
+            X[:, devMagOffset+i] = devMag
+        if withExpMag:
+            expMag = getMag(cat, b, 'cmodel.exp')
+            good = np.logical_and(good, np.isfinite(expMag))
+            X[:, expMagOffset+i] = expMag
+        if withFracDev:
+            fracDev = cat.get('cmodel.fracDev.'+b)
+            good = np.logical_and(good, np.isfinite(fracDev))
+            X[:, fracDevOffset+i] = fracDev
+
     if magCut != None:
         mag, ex, good = getMags(cat, 'r', good=good)
         good = np.logical_and(good, mag >= magCut[0])
@@ -146,9 +231,9 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withM
             X[:,i] = Xtemp[:,i-1] - Xtemp[:,i]
     return X, Y
 
-def _loadDataSDSS(inputFile = "sgSDSS.fits", withMags=True, withShape=True,
+def _loadDataSDSS(inputFile = "sgSDSS.fits", withMags=True, withExt=True,
                   bands=['u', 'g', 'r', 'i', 'z'], doMagColors=True, magCut=None):
-    if (not withMags) and (not withShape):
+    if (not withMags) and (not withExt):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
         raise ValueError("I need to have magnitudes to do magnitude color mode")
@@ -157,13 +242,13 @@ def _loadDataSDSS(inputFile = "sgSDSS.fits", withMags=True, withShape=True,
     cat = afwTable.SimpleCatalog.readFits(inputFile)
     Y = cat.get('stellar')
     nBands = len(bands)
-    shape = (len(cat), nBands*(int(withMags)+int(withShape)))
+    shape = (len(cat), nBands*(int(withMags)+int(withExt)))
     X = np.zeros(shape)
     for i, b in enumerate(bands):
         mag, ex = getMags(cat, b, catType='sdss')
         if withMags:
             X[:, i] = mag
-        if withShape:
+        if withExt:
             if withMags:
                 X[:, nBands+i] = ex
             else:
