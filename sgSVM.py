@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.misc import comb
+from scipy.optimize import brentq
 
 from sklearn import preprocessing
 from sklearn.svm import SVC, LinearSVC 
@@ -357,9 +358,82 @@ def plotMagCuts(clf=None, X_test=None, Y_test=None, X=None, fig=None, linestyle=
     else:
         return fig
 
+def plotDecFunc(clf, X, X_plot=None):
+    assert X.shape[1] == 2
+    if X_plot is not None:
+        assert X_plot.shape == X.shape
+    else:
+        X_plot = X
+
+    decFunc = clf.decision_function(X)
+
+    fig = plt.figure()
+
+    sc = plt.scatter(X_plot[:,0], X_plot[:,1], c=decFunc, marker="o", s=2, edgecolor="none")
+
+    cb = plt.colorbar(sc, use_gridspec=True)
+
+    return fig
+
+def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle='-', const=None):
+    if X is None:
+        magsStd = mags
+        exMu = 0.0; exSigma = 1.0
+    else:
+        magMu = np.mean(X[:,0])
+        magSigma = np.std(X[:,0])
+        magsStd = (mags - magMu)/magSigma
+        exMu = np.mean(X[:,1])
+        exSigma = np.std(X[:,1])
+
+    def F(ex, mag):
+        ex = (ex-exMu)/exSigma
+        if isinstance(ex, np.ndarray):
+            mag = mag*np.ones(ex.shape) 
+            X = np.vstack([mag, ex]).T
+            return clf.decision_function(X)
+        else:
+            retval = clf.decision_function([mag, ex])[0]
+            return retval
+
+    exts = np.zeros(mags.shape)
+    for i, mag in enumerate(magsStd):
+        try:
+            exts[i] = brentq(F, -0.2, 1.0, args=(mag,))
+        except:
+            print "mag=", mag*magSigma + magMu
+            figT = plt.figure()
+            arr = np.linspace(0.0, 5.0, num=100)
+            plt.plot(arr, F(arr, mag))
+            return figT
+
+    if const is not None:
+        exts = np.ones(exts.shape)*const
+        linestyle = ':'
+    if fig is None:
+        fig = plt.figure()
+        if withScatter and Y is not None:
+            gals = np.logical_not(Y)
+            plt.scatter(X[gals][:,0], X[gals][:,1], marker='.', s=1, color='red', label='Galaxies')
+            plt.scatter(X[Y][:,0], X[Y][:,1], marker='.', s=1, color='blue', label='Stars')
+        plt.plot(mags, exts, color='k', linestyle=linestyle, linewidth=2)
+        ax = fig.get_axes()[0]
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+        plt.xlabel('Magnitude HSC-R', fontsize=18)
+        plt.ylabel('Extendedness HSC-R', fontsize=18)
+        ax.legend(loc='upper right', fontsize=18)
+    else:
+        ax = fig.get_axes()[0]
+        ax.plot(mags, exts, color='k', linestyle=linestyle, linewidth=2)
+
+    return fig
+
 def run(doMagColors=True, clfType='svc', param_grid={'C':[1.0, 10.0, 100.0, 1000.0], 'gamma':[0.1, 1.0, 10.0], 'kernel':['rbf']},
-        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc', n_jobs=4):
-    X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut)
+        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc', n_jobs=4, **kargs):
+    X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, **kargs)
     trainIndexes, testIndexes = selectTrainTest(X)
     X_scaled = preprocessing.scale(X)
     X_train = X_scaled[trainIndexes]; Y_train = Y[trainIndexes]
