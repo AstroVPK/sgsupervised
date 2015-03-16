@@ -48,6 +48,22 @@ def phiPol(X, q):
                         count += 1
     return Xz
 
+def testPosterior(posteriors, Y, bins=20):
+    histTotal, bin_edges = np.histogram(posteriors, bins=bins)
+    histStars, bin_edges = np.histogram(posteriors[Y], bins=bin_edges)
+    fracStars = histStars*1.0/histTotal
+    
+    fig = plt.figure()
+    plt.xlabel('Posterior', fontsize=18)
+    plt.ylabel('Fraction of True Stars', fontsize=18)
+    
+    ind = bin_edges[:-1]
+    width = bin_edges[1:] - bin_edges[:-1]
+    plt.bar(ind, fracStars, width, fill=False)
+    plt.plot(bin_edges, bin_edges)
+
+    return fig
+
 def plotMagEx(cat, band, withHSTLabels=True, magThreshold=23.5, exThreshold=0.04):
     mag, ex, good = getMags(cat, band)
     fig = plt.figure()
@@ -74,6 +90,27 @@ def plotMagEx(cat, band, withHSTLabels=True, magThreshold=23.5, exThreshold=0.04
         tick.label.set_fontsize(18)
     plt.legend(loc=1, fontsize=18)
     return fig
+
+def sampleWeightPosterior(clf, nSample=100):
+    sigma = np.sqrt(clf.C)
+    mean = np.zeros((len(clf.coef_[0])+1,))
+    mean[0] = clf.intercept_[0]
+    mean[1:] = clf.coef_[0]
+    cov = np.zeros((len(mean), len(mean)))
+    diag = range(len(mean))
+    cov[diag, diag] = sigma
+    return np.random.multivariate_normal(mean,cov,nSample)
+
+def getBayesianPosteriors(clf, X, nSample=100):
+    wSample = sampleWeightPosterior(clf, nSample=nSample)
+    from copy import deepcopy
+    clfTemp = deepcopy(clf)
+    bayesianPost = np.zeros((len(X),))
+    for i in range(nSample):
+        clfTemp.intercept_[0] = wSample[i][0]
+        clfTemp.coef_[0] = wSample[i][1:]
+        bayesianPost += clfTemp.predict_proba(X)[:,1]
+    return bayesianPost/nSample
 
 def getShape(cat, band, type):
     q = np.zeros((len(cat),))
@@ -521,7 +558,7 @@ def run(doMagColors=True, clfType='svc', param_grid={'C':[1.0, 10.0, 100.0, 1000
     X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, **kargs)
     trainIndexes, testIndexes = selectTrainTest(X)
     X_scaled = preprocessing.scale(X)
-    X_train = X_scaled[trainIndexes]; Y_train = Y[trainIndexes]
+    #X_train = X_scaled[trainIndexes]; Y_train = Y[trainIndexes]
     X_test = X_scaled[testIndexes]; Y_test = Y[testIndexes]
     estimator = getClassifier(clfType=clfType)
     clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
