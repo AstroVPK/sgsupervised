@@ -164,9 +164,9 @@ def loadData(catType='hsc', **kargs):
         raise ValueError("Unkown catalog type {0}".format(catType))
 
 def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withExt=True,
-                 bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None, withDepth=False,
-                 withSeeing=False, withDevShape=False, withExpShape=False, withDevMag=False,
-                 withExpMag=False, withFracDev=False):
+                 bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None, withDepth=True,
+                 withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True,
+                 withExpMag=True, withFracDev=True):
     if (not withMags) and (not withExt):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
@@ -365,7 +365,7 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
             Y_predict_cuts = clf.predict(X_test_cuts)
         starIdxsPredict = np.where(Y_predict_cuts == 1)
         galIdxsPredict = np.where(Y_predict_cuts == 0)
-        if isinstance(clf, LogisticRegression) and doProb:
+        if doProb:
             cutProbs = clf.predict_proba(X_test_cuts)[:,1]
             Probs[i] = np.mean(cutProbs[starIdxsTrue])
             minIdxs = np.where(cutProbs[starIdxsTrue] < Probs[i])
@@ -553,13 +553,13 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
 
     return fig
 
-def run(doMagColors=True, clfType='svc', param_grid={'C':[1.0, 10.0, 100.0, 1000.0], 'gamma':[0.1, 1.0, 10.0], 'kernel':['rbf']},
+def run(doMagColors=True, clfType='svc', param_grid={'C':[0.1, 1.0, 10.0, 100.0], 'gamma':[0.1, 1.0, 10.0], 'kernel':['rbf']},
         magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc', n_jobs=4, **kargs):
     X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, **kargs)
     trainIndexes, testIndexes = selectTrainTest(X)
-    X_scaled = preprocessing.scale(X)
-    #X_train = X_scaled[trainIndexes]; Y_train = Y[trainIndexes]
-    X_test = X_scaled[testIndexes]; Y_test = Y[testIndexes]
+    trainMean = np.mean(X[trainIndexes], axis=0); trainStd = np.std(X[trainIndexes], axis=0)
+    X_train = (X[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
+    X_test = (X[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
     estimator = getClassifier(clfType=clfType)
     clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
     clf.fit(X_train, Y_train)
@@ -586,4 +586,5 @@ if __name__ == '__main__':
     parser.add_argument('--catType', default='hsc', type=str,
                         help='If `hsc` assume the input file is an hsc catalog, `sdss` assume the input file is an sdss catalog.')
     kargs = vars(parser.parse_args())
+    kargs['bands'] = ['r']
     run(**kargs)
