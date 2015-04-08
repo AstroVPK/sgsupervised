@@ -553,29 +553,34 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
 
     return fig
 
-def run(doMagColors=True, clfType='svc', param_grid={'C':[0.1, 1.0, 10.0, 100.0], 'gamma':[0.1, 1.0, 10.0], 'kernel':['rbf']},
-        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc', n_jobs=4, **kargs):
+def run(doMagColors=True, clfType='svc', param_grid={'C':[10.0], 'gamma':[0.1], 'kernel':['linear']},
+        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc', n_jobs=4,
+        probFit=False, probFile='prob.pkl', **kargs):
     X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, **kargs)
-    trainIndexes, testIndexes = selectTrainTest(X)
-    trainMean = np.mean(X[trainIndexes], axis=0); trainStd = np.std(X[trainIndexes], axis=0)
-    X_train = (X[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
-    X_test = (X[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
-    estimator = getClassifier(clfType=clfType)
-    clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
+    Xsub = X[:,[1, 5, 7, 8, 9]]
+    trainIndexes, testIndexes = selectTrainTest(Xsub)
+    trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
+    X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
+    X_test = (Xsub[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
+    if probFit:
+        clfKargs = {}
+        for k in param_grid:
+            assert len(param_grid[k]) == 1
+            clfKargs[k] = param_grid[k][0]
+        clf = getClassifier(clfType=clfType, probability=True, **clfKargs)
+    else:
+        estimator = getClassifier(clfType=clfType)
+        clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
     clf.fit(X_train, Y_train)
     score = clf.score(X_test, Y_test)
     print "score=", score
-    #plotMagCuts(clf, X_test, Y_test, X[testIndexes], title=clfType, doProb=doProb)
-    print "The best estimator parameters are"
-    print clf.best_params_
-    #coef = clf.best_estimator_.coef_; intercept = clf.best_estimator_.intercept_
-    #mu = np.mean(X, axis=0)
-    #std = np.std(X, axis=0)
-    #coef = coef/std
-    #intercept = intercept - np.sum(coef*mu/std)
-    #plt.show()
-    #return clf, X_train, Y_train, X_test, Y_test, coef, intercept
-    #return clf, X_train, Y_train, X_test, Y_test
+    if probFit:
+        import pickle
+        with open(probFile, 'wb') as f:
+            pickle.dump((clf, trainIndexes, testIndexes, X, Y), f)
+    else:
+        print "The best estimator parameters are"
+        print clf.best_params_
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Build the extreme deconvolution model..")
@@ -585,6 +590,10 @@ if __name__ == '__main__':
                         help='File containing the input catalog')
     parser.add_argument('--catType', default='hsc', type=str,
                         help='If `hsc` assume the input file is an hsc catalog, `sdss` assume the input file is an sdss catalog.')
+    parser.add_argument('--probFit', action='store_true',
+                        help='If present, simply do a fit with probability set to True')
+    parser.add_argument('--probFile', default='prob.pkl', type=str,
+                        help='Name of the file to store the probabilistic classifier')
     kargs = vars(parser.parse_args())
     kargs['bands'] = ['r']
     run(**kargs)
