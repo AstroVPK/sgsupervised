@@ -35,6 +35,61 @@ def getPsfMag(cat, band):
     mag = -2.5*np.log10(fluxPsf/fluxZero)
     return mag
 
+def makeExtExtPlot(cat, bands=['g', 'r', 'i', 'z', 'y'], fontSize=14):
+    if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
+       not isinstance(cat, afwTable.tableLib.SimpleCatalog):
+        cat = afwTable.SourceCatalog.readFits(cat)
+
+def makeMatchMagPlot(cat, fontSize=18, starDiff=0.25, galDiff=0.6):
+    if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
+       not isinstance(cat, afwTable.tableLib.SimpleCatalog):
+        cat = afwTable.SourceCatalog.readFits(cat)
+    fluxI = cat.get('cmodel.flux.i')
+    fluxPsfI = cat.get('flux.psf.i')
+    fluxZeroI = cat.get('flux.zeromag.i')
+    magI = -2.5*np.log10(fluxI/fluxZeroI)
+    extI = -2.5*np.log10(fluxPsfI/fluxI)
+    magAuto = cat.get('mag.auto')
+    stellar = cat.get('stellar')
+    good = np.logical_and(True, np.abs(magI - magAuto) < 10.0)
+    good = np.logical_and(good, extI < 2.0)
+    goodStar = np.logical_and(good, stellar)
+    goodGal = np.logical_and(good, np.logical_not(stellar))
+    x = np.linspace(15.0, 30.0, num=100)
+    y = np.linspace(15.0, 30.0, num=100)
+
+    fig = plt.figure()
+    cbar_ax = fig.add_axes([0.91, 0.1, 0.02, 0.8])
+    axStar = fig.add_subplot(1, 2, 1)
+    axStar.set_title('Putative Stars', fontsize=fontSize)
+    axStar.set_xlabel('MAG_AUTO F814W', fontsize=fontSize)
+    axStar.set_ylabel('CModel Magnitude HSC-I', fontsize=fontSize)
+    axStar.set_xlim((16.5, 28.0)); axStar.set_ylim((16.5, 28.0))
+    axGal = fig.add_subplot(1, 2, 2)
+    axGal.set_title('Putative Galaxies', fontsize=fontSize)
+    axGal.set_xlabel('MAG_AUTO F814W', fontsize=fontSize)
+    axGal.set_ylabel('CModel Magnitude HSC-I', fontsize=fontSize)
+    axGal.set_xlim((16.5, 28.0)); axGal.set_ylim((16.5, 28.0))
+    
+    for ax in [axStar, axGal]:
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize-2)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize-2)
+
+    scStar = axStar.scatter(magAuto[goodStar], magI[goodStar], marker='.', s=8, c=extI[goodStar], edgecolors='none')
+    axStar.plot(x, y+starDiff, linestyle='-', color='black')
+    axStar.plot(x, y-0.1-starDiff, linestyle='-', color='black')
+    scGal = axGal.scatter(magAuto[goodGal], magI[goodGal], marker='.', s=8, c=extI[goodGal], edgecolors='none')
+    axGal.plot(x, y+galDiff, linestyle='-', color='black')
+    axGal.plot(x, y-1.3-galDiff, linestyle='-', color='black')
+
+    cb = fig.colorbar(scGal, cax=cbar_ax, use_gridspec=True)
+    cb.ax.tick_params(labelsize=fontSize)
+    cb.set_label('Extendedness', fontsize=fontSize)
+
+    return fig
+
 def makeExtSeeingSnrPlot(cat, band, size=1, withLabels=False, fontSize=18):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
@@ -100,13 +155,13 @@ def makeMagSnrPlot(cat, band, size=1, log=True):
 
 def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
                      xlim=None, ylim=None, trueSample=False, magMin=None,
-                     extMax=None):
+                     extMax=None, type='ext'):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
     fig = plt.figure()
     nRow, nColumn = _getExtHistLayout(len(bands))
-    for i in range(nRow*nColumn):
+    for i in range(len(bands)):
         ax = fig.add_subplot(nRow, nColumn, i+1)
         band = bands[i]
         flux = cat.get('cmodel.flux.'+band)
@@ -121,6 +176,23 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
             stdStar = np.zeros((len(seeingSet),))
             stdGal = np.zeros((len(seeingSet),))
         ext = -2.5*np.log10(fluxPsf/flux)
+        if type == 'ext':
+            data = ext
+            ax.set_ylabel('Extendedness HSC-'+band.upper(), fontsize=fontSize)
+        elif type == 'edext':
+            fluxExp = cat.get('cmodel.exp.flux.'+band)
+            fluxDev = cat.get('cmodel.dev.flux.'+band)
+            data = -2.5*np.log10(fluxExp/fluxDev)
+            ax.set_ylabel('Exp_mag-Dev_mag HSC-'+band.upper(), fontsize=fontSize)
+        elif type == 'rexp':
+            q, data = sgsvm.getShape(cat, band, 'exp')
+            ax.set_ylabel('rExp HSC-'+band.upper(), fontsize=fontSize)
+        elif type == 'rdev':
+            q, data = sgsvm.getShape(cat, band, 'dev')
+            ax.set_ylabel('rDev HSC-'+band.upper(), fontsize=fontSize)
+        else:
+            data = cat.get(type + '.' + band)
+            ax.set_ylabel(type + ' HSC-'+band.upper(), fontsize=fontSize)
         good = getGood(cat, band)
         if magMin:
             fluxZero = cat.get('flux.zeromag.'+band)
@@ -134,18 +206,33 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
         if ylim is not None:
             ax.set_ylim(ylim)
         if withLabels:
+            good = np.logical_and(good, np.isfinite(data))
             gals = np.logical_and(good, np.logical_not(stellar))
             stars = np.logical_and(good, stellar)
+            globalMeanStar = np.mean(data[stars])
+            globalMeanGal = np.mean(data[gals])
             for j, s in enumerate(seeingSet):
                 sample = np.logical_and(True, seeing == s)
                 sampleStar = np.logical_and(stars, sample); nStar = np.sum(sampleStar)
                 sampleGal = np.logical_and(gals, sample); nGal = np.sum(sampleGal)
-                meanStar[j] = np.mean(ext[sampleStar])
-                meanGal[j] = np.mean(ext[sampleGal])
-                stdStar[j] = np.std(ext[sampleStar])/np.sqrt(nStar-1)
-                stdGal[j] = np.std(ext[sampleGal])/np.sqrt(nGal-1)
+                meanStar[j] = np.mean(data[sampleStar])
+                meanGal[j] = np.mean(data[sampleGal])
+                if nStar > 1:
+                    stdStar[j] = np.std(data[sampleStar])/np.sqrt(nStar-1)
+                else:
+                    stdStar[j] = 2*globalMeanGal
+                if nGal > 1:
+                    stdGal[j] = np.std(data[sampleGal])/np.sqrt(nGal-1)
+                else:
+                    stdGal[j] = 2*globalMeanGal
             ax.errorbar(np.array(list(seeingSet)), meanStar, yerr=stdStar, fmt='o', color='blue')
             ax.errorbar(np.array(list(seeingSet)), meanGal, yerr=stdGal, fmt='o', color='red')
+            ax.axhline(y=globalMeanStar, xmin=0.0, xmax=1.0, linewidth=1, linestyle='--', color='blue')
+            ax.axhline(y=globalMeanGal, xmin=0.0, xmax=1.0, linewidth=1, linestyle='--', color='red')
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
     return fig
 
 def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
@@ -198,13 +285,18 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
                     for i in range(int(frac*len(mag))):
                         if stars[i]:
                             ax.plot(mag[i], data[i], marker='.', markersize=size, color='blue')
-                        else:
+                        elif gals[i]:
                             ax.plot(mag[i], data[i], marker='.', markersize=size, color='red')
                 else:
                     ax.scatter(mag[stars], data[stars], marker='.', s=size, color='blue', label='Stars')
                     ax.scatter(mag[gals], data[gals], marker='.', s=size, color='red', label='Galaxies')
             else:
-                ax.scatter(mag[good], data[good], marker='.', s=size)
+                if trueSample:
+                    for i in range(int(frac*len(mag))):
+                        if good[i]:
+                            ax.plot(mag[i], data[i], marker='.', markersize=size, color='black')
+                else:
+                    ax.scatter(mag[good], data[good], marker='.', s=size)
             data = None
             for tick in ax.xaxis.get_major_ticks():
                 tick.label.set_fontsize(fontSize)
@@ -269,8 +361,10 @@ def _getExtHistLayout(nCuts):
         return 1, 3
     elif nCuts == 4:
         return 2, 2
+    elif nCuts == 5:
+        return 2, 3
     else:
-        raise ValueError("Using more than 4 cuts is not implemented")
+        raise ValueError("Using more than 5 cuts is not implemented")
 
 
 def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=False,
@@ -317,9 +411,9 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
         else:
             ax.set_ylabel('Object Counts', fontsize=fontSize)
         ax.set_title('{0} < Magnitude < {1}'.format(*magCut), fontsize=fontSize)
+        hist, bins = np.histogram(data[goodCut], bins=nBins, range=xlim)
         if withLabels:
             # Make sure the same binning is being used to make meaningful comparisons
-            hist, bins = np.histogram(data[goodCut], bins=nBins, range=xlim)
             gals = np.logical_and(goodCut, np.logical_not(stellar))
             stars = np.logical_and(goodCut, stellar)
             ax.hist(data[stars], bins=bins, histtype='step', normed=normed, color='blue', label='Stars')
@@ -328,7 +422,7 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
                 ax.set_ylim(ylim)
             ax.hist(data[gals], bins=bins, histtype='step', normed=normed, color='red', label='Galaxies')
         else:
-            ax.hist(data[goodCut], bins=nBins, histtype='step', normed=normed, color='black')
+            ax.hist(data[goodCut], bins=bins, histtype='step', normed=normed, color='black')
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
