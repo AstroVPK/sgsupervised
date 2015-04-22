@@ -163,7 +163,7 @@ def loadData(catType='hsc', **kargs):
     else:
         raise ValueError("Unkown catalog type {0}".format(catType))
 
-def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withMags=True, withExt=True,
+def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits", withMags=True, withExt=True,
                  bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None, withDepth=True,
                  withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True,
                  withExpMag=True, withFracDev=True):
@@ -173,7 +173,11 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcMultiBandAll.fits", withM
         raise ValueError("I need to have magnitudes to do magnitude color mode")
     if (not withMags) and (magCut != None):
         raise ValueError("I need to have magnitudes to do magnitude cuts")
-    cat = afwTable.SourceCatalog.readFits(inputFile)
+    if not isinstance(inputFile, afwTable.tableLib.SourceCatalog) and\
+       not isinstance(inputFile, afwTable.tableLib.SimpleCatalog):
+        cat = afwTable.SourceCatalog.readFits(inputFile)
+    else:
+        cat = inputFile
     Y = cat.get('stellar')
     nBands = len(bands)
     nFeatures = nBands*(int(withMags) + int(withExt) + int(withDepth) + int(withSeeing) +\
@@ -316,9 +320,9 @@ def selectTrainTest(X, nTrain = 0.8, nTest = 0.2):
 def getClassifier(clfType = 'svc', *args, **kargs):
     if clfType == 'svc':
         return SVC(*args, **kargs)
-    elif clfType == 'linearsvc':
+    elif clfType == 'linearsvc' or clfType == 'linearsvm':
         return LinearSVC(*args, **kargs)
-    elif clfType == 'logit':
+    elif clfType == 'logit' or clfType == 'logistic':
         return LogisticRegression(*args, **kargs)
     else:
         raise ValueError("I don't know the classifier type {0}".format(clfType))
@@ -521,11 +525,12 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
     exts = np.zeros(mags.shape)
     for i, mag in enumerate(magsStd):
         try:
-            exts[i] = brentq(F, -0.2, 1.0, args=(mag,))
+            brentMin = -1.0; brentMax = 1.0
+            exts[i] = brentq(F, brentMin, brentMax, args=(mag,))
         except:
             print "mag=", mag*magSigma + magMu
             figT = plt.figure()
-            arr = np.linspace(0.0, 5.0, num=100)
+            arr = np.linspace(brentMin, brentMax, num=100)
             plt.plot(arr, F(arr, mag))
             return figT
 
@@ -553,8 +558,8 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
 
     return fig
 
-def run(doMagColors=True, clfType='svc', param_grid={'C':[10.0], 'gamma':[0.1], 'kernel':['linear']},
-        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcMultiBandAll.fits', catType='hsc', n_jobs=4,
+def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
+        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
         probFit=False, probFile='prob.pkl', **kargs):
     X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, **kargs)
     Xsub = X[:,[1, 5, 7, 8, 9]]
@@ -574,6 +579,11 @@ def run(doMagColors=True, clfType='svc', param_grid={'C':[10.0], 'gamma':[0.1], 
     clf.fit(X_train, Y_train)
     score = clf.score(X_test, Y_test)
     print "score=", score
+    trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
+    X_train = (Xsub - trainMean)/trainStd; Y_train = Y
+    clf.best_estimator_.fit(X_train, Y_train)
+    print "coeffs=", clf.best_estimator_.coef_/trainStd
+    print "intercept=", clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
     if probFit:
         import pickle
         with open(probFile, 'wb') as f:
@@ -586,7 +596,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Build the extreme deconvolution model..")
     parser.add_argument('--clfType', default='svc', type=str,
                         help='Type of classifier to use')
-    parser.add_argument('--inputFile', default='sgClassCosmosDeepCoaddSrcMultiBandAll.fits', type=str,
+    parser.add_argument('--inputFile', default='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', type=str,
                         help='File containing the input catalog')
     parser.add_argument('--catType', default='hsc', type=str,
                         help='If `hsc` assume the input file is an hsc catalog, `sdss` assume the input file is an sdss catalog.')
