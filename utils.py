@@ -5,7 +5,7 @@ import lsst.afw.table as afwTable
 
 import sgSVM as sgsvm
 
-def getGood(cat, band):
+def getGood(cat, band='i', magCut=None):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -13,6 +13,20 @@ def getGood(cat, band):
     fluxPsf = cat.get('flux.psf.'+band)
     ext = -2.5*np.log10(fluxPsf/flux)
     good = np.logical_and(True, ext < 5.0)
+    if band == 'i':
+        fluxI = flux
+    else:
+        fluxI = cat.get('cmodel.flux.i')
+    fluxZeroI = cat.get('flux.zeromag.i')
+    magI = -2.5*np.log10(fluxI/fluxZeroI)
+    magAuto = cat.get('mag.auto')
+    stellar = cat.get('stellar')
+    goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
+    goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
+    good = np.logical_or(goodStar, goodGal)
+    if magCut is not None:
+        good = np.logical_and(good, magI > magCut[0])
+        good = np.logical_and(good, magI < magCut[1])
     return good
 
 def getExt(cat, band):
@@ -35,10 +49,104 @@ def getPsfMag(cat, band):
     mag = -2.5*np.log10(fluxPsf/fluxZero)
     return mag
 
-def makeExtExtPlot(cat, bands=['g', 'r', 'i', 'z', 'y'], fontSize=14):
+def _getExtExtLayout(nBands):
+    if nBands == 1:
+        raise ValueError("I need at least to bands to generate this plot")
+    elif nBands == 2:
+        return 1, 1
+    elif nBands == 3:
+        return 1, 3
+    elif nBands == 4:
+        return 2, 3
+    elif nBands == 5:
+        return 5, 2
+
+def makeExtExtPlot(cat, bands=['g', 'r', 'i', 'z', 'y'], fontSize=14, size=1,
+                   plotStars=True, plotGals=True, xlim=(-0.03, 0.5), ylim=(-0.03, 0.5),
+                   magCut=None, byMagCuts=False,
+                   magCuts=[(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)], computeCorr=False,
+                   seed=0, nPerm=100):
+
+    np.random.seed(seed)
+    nBands = len(bands)
+
+    if byMagCuts:
+        assert magCuts is not None
+        assert nBands == 2
+        nRow, nColumn = 2, 2
+    else:
+        nRow, nColumn = _getExtExtLayout(nBands)
+
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
+
+    fig = plt.figure()
+    count = 1
+
+    if not byMagCuts:
+        magCuts = [magCut]
+
+    stellar = cat.get('stellar')
+    for magCut in magCuts:
+        good = True
+        for b in bands:
+            good = np.logical_and(good, getGood(cat, band=b, magCut=magCut))
+
+        for i in range(nBands):
+            flux_i = cat.get('cmodel.flux.'+bands[i])
+            fluxPsf_i = cat.get('flux.psf.'+bands[i])
+            ext_i = -2.5*np.log10(fluxPsf_i/flux_i)
+            #ext_i = (flux_i - fluxPsf_i)/flux_i
+            for j in range(i+1, nBands):
+                flux_j = cat.get('cmodel.flux.'+bands[j])
+                fluxPsf_j = cat.get('flux.psf.'+bands[j])
+                ext_j = -2.5*np.log10(fluxPsf_j/flux_j)
+                #ext_j = (flux_j - fluxPsf_j)/flux_j
+                good = np.logical_and(good, np.isfinite(ext_i))
+                good = np.logical_and(good, np.isfinite(ext_j))
+                goodStars = np.logical_and(stellar, good)
+                #goodStars = np.logical_and(goodStars, ext_i < 0.01)
+                #goodStars = np.logical_and(goodStars, ext_i**2+ext_j**2 < 0.05**2)
+                goodGals = np.logical_and(np.logical_not(stellar), good)
+                ax = fig.add_subplot(nRow, nColumn, count)
+                if xlim is not None:
+                    ax.set_xlim(xlim)
+                if ylim is not None:    
+                    ax.set_ylim(ylim)
+                ax.set_xlabel('Extendedness HSC-{0}'.format(bands[i].upper()), fontsize=fontSize)
+                ax.set_ylabel('Extendedness HSC-{0}'.format(bands[j].upper()), fontsize=fontSize)
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label.set_fontsize(fontSize)
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label.set_fontsize(fontSize)
+                if magCut is not None:
+                    ax.set_title('{0} < Magnitude HSC-I < {1}'.format(magCut[0], magCut[1]), fontsize=fontSize)
+                if plotStars:
+                    ax.scatter(ext_i[goodStars], ext_j[goodStars], marker='.', s=size)
+                if plotGals:
+                    ax.scatter(ext_i[goodGals], ext_j[goodGals], marker='.', s=size)
+                if computeCorr:
+                    if plotStars:
+                        corr = np.corrcoef(np.vstack((ext_i[goodStars], ext_j[goodStars])))
+                        print "{0} < Magnitude HSC-I < {1} (Stars): Corr={2}".format(magCut[0], magCut[1], corr[0,1])
+                        corrList = np.zeros((nPerm,))
+                        for k in range(nPerm):
+                            iPerm = np.random.permutation(ext_i[goodStars])
+                            jPerm = np.random.permutation(ext_j[goodStars])
+                            corrList[k] = np.corrcoef(np.vstack((iPerm, jPerm)))[0,1]
+                        print "meanCorr={0}, stdCorr={1}, p-value={2}".format(np.mean(corrList), np.std(corrList), np.sum(np.logical_and(True, corrList >= corr[0,1]))*1.0/nPerm)
+                    if plotGals:
+                        corr = np.corrcoef(np.vstack((ext_i[goodGals], ext_j[goodGals])))
+                        print "{0} < Magnitude HSC-I < {1} (Galaxies): Corr={2}".format(magCut[0], magCut[1], corr[0,1])
+                        corrList = np.zeros((nPerm,))
+                        for k in range(nPerm):
+                            iPerm = np.random.permutation(ext_i[goodGals])
+                            jPerm = np.random.permutation(ext_j[goodGals])
+                            corrList[k] = np.corrcoef(np.vstack((iPerm, jPerm)))[0,1]
+                        print "meanCorr={0}, stdCorr={1}, p-value={2}".format(np.mean(corrList), np.std(corrList), np.sum(np.logical_and(True, corrList >= corr[0,1]))*1.0/nPerm)
+                count += 1
+    return fig
 
 def makeMatchMagPlot(cat, fontSize=18, starDiff=0.25, galDiff=0.6):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
@@ -355,7 +463,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
 def _getExtHistLayout(nCuts):
     if nCuts == 1:
         return 1, 1
-    if nCuts == 2:
+    elif nCuts == 2:
         return 1, 2
     elif nCuts == 3:
         return 1, 3
