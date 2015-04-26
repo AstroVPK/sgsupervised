@@ -495,6 +495,9 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
         stellar = cat.get('stellar')
     mag = -2.5*np.log10(flux/fluxZero)
     ext = -2.5*np.log10(fluxPsf/flux)
+    fluxI = cat.get('cmodel.flux.i')
+    fluxZeroI = cat.get('flux.zeromag.i')
+    magI = -2.5*np.log10(fluxI/fluxZeroI)
     if data is None:
         if type == 'ext':
             data = ext
@@ -508,8 +511,8 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
     fig = plt.figure()
     for i in range(nRow*nColumn):
         magCut = magCuts[i]
-        goodCut = np.logical_and(good, mag >= magCut[0])
-        goodCut = np.logical_and(goodCut, mag <= magCut[1])
+        goodCut = np.logical_and(good, magI >= magCut[0])
+        goodCut = np.logical_and(goodCut, magI <= magCut[1])
         ax = fig.add_subplot(nRow, nColumn, i+1)
         ax.set_xlabel('Extendedness HSC-' + band.upper(), fontsize=fontSize)
         if xlim is not None:
@@ -518,7 +521,7 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             ax.set_ylabel('Probability Density', fontsize=fontSize)
         else:
             ax.set_ylabel('Object Counts', fontsize=fontSize)
-        ax.set_title('{0} < Magnitude < {1}'.format(*magCut), fontsize=fontSize)
+        ax.set_title('{0} < Magnitude HSC-I < {1}'.format(*magCut), fontsize=fontSize)
         hist, bins = np.histogram(data[goodCut], bins=nBins, range=xlim)
         if withLabels:
             # Make sure the same binning is being used to make meaningful comparisons
