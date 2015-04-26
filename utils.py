@@ -508,6 +508,7 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
         else:
             data = cat.get(type + '.' + band)
     good = getGood(cat, band)
+    good = np.logical_and(good, np.isfinite(data))
     fig = plt.figure()
     for i in range(nRow*nColumn):
         magCut = magCuts[i]
@@ -527,11 +528,13 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             # Make sure the same binning is being used to make meaningful comparisons
             gals = np.logical_and(goodCut, np.logical_not(stellar))
             stars = np.logical_and(goodCut, stellar)
-            ax.hist(data[stars], bins=bins, histtype='step', normed=normed, color='blue', label='Stars')
+            if np.sum(stars) > 0:
+                ax.hist(data[stars], bins=bins, histtype='step', normed=normed, color='blue', label='Stars')
             if normed:
                 ylim = ax.get_ylim()
                 ax.set_ylim(ylim)
-            ax.hist(data[gals], bins=bins, histtype='step', normed=normed, color='red', label='Galaxies')
+            if np.sum(gals) > 0:
+                ax.hist(data[gals], bins=bins, histtype='step', normed=normed, color='red', label='Galaxies')
         else:
             ax.hist(data[goodCut], bins=bins, histtype='step', normed=normed, color='black')
         for tick in ax.xaxis.get_major_ticks():
