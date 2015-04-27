@@ -48,6 +48,30 @@ def phiPol(X, q):
                         count += 1
     return Xz
 
+def getGood(cat, band='i', magCut=None):
+    if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
+       not isinstance(cat, afwTable.tableLib.SimpleCatalog):
+        cat = afwTable.SourceCatalog.readFits(cat)
+    flux = cat.get('cmodel.flux.'+band)
+    fluxPsf = cat.get('flux.psf.'+band)
+    ext = -2.5*np.log10(fluxPsf/flux)
+    good = np.logical_and(True, ext < 5.0)
+    if band == 'i':
+        fluxI = flux
+    else:
+        fluxI = cat.get('cmodel.flux.i')
+    fluxZeroI = cat.get('flux.zeromag.i')
+    magI = -2.5*np.log10(fluxI/fluxZeroI)
+    magAuto = cat.get('mag.auto')
+    stellar = cat.get('stellar')
+    goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
+    goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
+    good = np.logical_or(goodStar, goodGal)
+    if magCut is not None:
+        good = np.logical_and(good, magI > magCut[0])
+        good = np.logical_and(good, magI < magCut[1])
+    return good
+
 def testPosterior(posteriors, Y, bins=20):
     histTotal, bin_edges = np.histogram(posteriors, bins=bins)
     histStars, bin_edges = np.histogram(posteriors[Y], bins=bin_edges)
@@ -129,7 +153,7 @@ def getMag(cat, band, magType):
     mag = -2.5*np.log10(rat)
     return mag
 
-def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType='hsc'):
+def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType='hsc', noParent=True):
     if catType == 'hsc':
         f = cat.get('cmodel.flux.'+band)
         fErr = cat.get('cmodel.flux.err.'+band)
@@ -144,9 +168,21 @@ def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType
         if checkExtendedness:
             # Discard objects with extreme extendedness
             good = np.logical_and(good, ex < 5.0)
-        if checkExtendedness or checkSNR:
-            return mag, ex, snr, good
-        return mag, ex, snr
+        if band == 'i':
+            fluxI = f
+            fluxZeroI = f0
+        else:
+            fluxI = cat.get('cmodel.flux.i')
+            fluxZeroI = cat.get('flux.zeromag.i')
+        magI = -2.5*np.log10(fluxI/fluxZeroI)
+        magAuto = cat.get('mag.auto')
+        stellar = cat.get('stellar')
+        goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
+        goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
+        good = np.logical_or(goodStar, goodGal)
+        if noParent:
+            good = np.logical_or(good, cat.get('parent.'+band) == 0)
+        return mag, ex, snr, good
     elif catType == 'sdss':
         mag = cat.get('cModelMag.'+band)
         magPsf = cat.get('psfMag.'+band)
@@ -166,7 +202,7 @@ def loadData(catType='hsc', **kargs):
 def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits", withMags=True, withExt=True,
                  bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None, withDepth=True,
                  withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True,
-                 withExpMag=True, withFracDev=True):
+                 withExpMag=True, withFracDev=True, noParent=True):
     if (not withMags) and (not withExt):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
@@ -218,7 +254,7 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
     X = np.zeros(shape)
     good=True
     for i, b in enumerate(bands):
-        mag, ex, snr, good = getMags(cat, b, good=good)
+        mag, ex, snr, good = getMags(cat, b, good=good, noParent=noParent)
         if withMags:
             good = np.logical_and(good, np.logical_not(np.isnan(mag)))
             good = np.logical_and(good, np.logical_not(np.isinf(mag)))
@@ -265,7 +301,7 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
         good = np.logical_and(good, mag <= magCut[1])
     X = X[good]; Y = Y[good]
     if doMagColors:
-        magIdx = bands.index('r')
+        magIdx = bands.index('i')
         Xtemp = X.copy()
         X[:,0] = Xtemp[:,magIdx] #TODO: Make it possible to use other bands seamlessly
         for i in range(1,len(bands)):
@@ -330,9 +366,6 @@ def getClassifier(clfType = 'svc', *args, **kargs):
 def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, num=200,
                 doProb=False, probThreshold=0.5, bands=['g', 'r', 'i', 'z', 'y'],
                 doMagColors=True, Y_predict=None):
-    nBands = len(bands)
-    nColors = nBands - 1
-
     if Y_predict is not None:
         print "I won't use the classifier that you passed, instead I'll used the predicted labels that you passed"
     mags = np.linspace(minMag, maxMag, num=num)
@@ -401,7 +434,7 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
     else:
         return mags, starCompl, starPurity, galCompl, galPurity
 
-def plotMagCuts(clf=None, X_test=None, Y_test=None, X=None, fig=None, linestyle='-', mags=None,
+def plotMagCuts(clf, X_test=None, Y_test=None, X=None, fig=None, linestyle='-', mags=None,
                 starCompl=None, starPurity=None, galCompl=None, Probs=None, ProbsMin=None,
                 ProbsMax=None, galPurity=None, title='SVM Linear', **kargs):
     if 'doProb' in kargs:
@@ -558,15 +591,51 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
 
     return fig
 
+def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[1.0, 10.0, 100.0]},
+             magCut=None, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
+             seed=0, cols=None, makePlots=None, doMagColors=False, **kargs):
+    np.random.seed(0)
+    cat = afwTable.SourceCatalog.readFits(inputFile)
+    for b in bands:
+        print "Running analysis for band HSC-{0}".format(b.upper())
+        X, Y = loadData(bands=[b], catType=catType, inputFile=cat, doMagColors=doMagColors, magCut=magCut, **kargs)
+        print "I'll use {0} objects to train on this band".format(len(X))
+        if cols is not None:
+            X = X[:,cols]
+        trainIndexes, testIndexes = selectTrainTest(X)
+        trainMean = np.mean(X[trainIndexes], axis=0); trainStd = np.std(X[trainIndexes], axis=0)
+        X_train = (X[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
+        X_test = (X[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
+        estimator = getClassifier(clfType=clfType, **kargs)
+        clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
+        clf.fit(X_train, Y_train)
+        if makePlots is not None:
+            if b in makePlots:
+                plotMagCuts(clf, X_test=X_test, Y_test=Y_test, X=X[testIndexes])
+        print "The best estimator parameters are"
+        print clf.best_params_
+        score = clf.score(X_test, Y_test)
+        print "score=", score
+        trainMean = np.mean(X, axis=0); trainStd = np.std(X, axis=0)
+        X_train = (X - trainMean)/trainStd; Y_train = Y
+        clf.best_estimator_.fit(X_train, Y_train)
+        coeffs = clf.best_estimator_.coef_/trainStd
+        print "coeffs=", coeffs
+        intercept = clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
+        print "intercept=", intercept
+        if cols == [1]:
+            print "Extendedness_cut=".format(intercept[0]/coeffs[0][0])
+
 def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
         magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
-        probFit=False, probFile='prob.pkl', **kargs):
+        probFit=False, probFile='prob.pkl', cols=None, **kargs):
     X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, **kargs)
-    Xsub = X[:,[1, 5, 7, 8, 9]]
-    trainIndexes, testIndexes = selectTrainTest(Xsub)
-    trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
-    X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
-    X_test = (Xsub[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
+    if cols is not None:
+        X = X[:, cols]
+    trainIndexes, testIndexes = selectTrainTest(X)
+    trainMean = np.mean(X[trainIndexes], axis=0); trainStd = np.std(X[trainIndexes], axis=0)
+    X_train = (X[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
+    X_test = (X[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
     if probFit:
         clfKargs = {}
         for k in param_grid:
@@ -579,11 +648,6 @@ def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
     clf.fit(X_train, Y_train)
     score = clf.score(X_test, Y_test)
     print "score=", score
-    trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
-    X_train = (Xsub - trainMean)/trainStd; Y_train = Y
-    clf.best_estimator_.fit(X_train, Y_train)
-    print "coeffs=", clf.best_estimator_.coef_/trainStd
-    print "intercept=", clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
     if probFit:
         import pickle
         with open(probFile, 'wb') as f:
@@ -591,6 +655,12 @@ def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
     else:
         print "The best estimator parameters are"
         print clf.best_params_
+    trainMean = np.mean(X, axis=0); trainStd = np.std(X, axis=0)
+    X_train = (X - trainMean)/trainStd; Y_train = Y
+    clf.best_estimator_.fit(X_train, Y_train)
+    print "coeffs*std=", clf.best_estimator_.coef_
+    print "coeffs=", clf.best_estimator_.coef_/trainStd
+    print "intercept=", clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Build the extreme deconvolution model..")
