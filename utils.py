@@ -5,7 +5,7 @@ import lsst.afw.table as afwTable
 
 import sgSVM as sgsvm
 
-def getGood(cat, band='i', magCut=None):
+def getGood(cat, band='i', magCut=None, noParent=True):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -24,6 +24,8 @@ def getGood(cat, band='i', magCut=None):
     goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
     goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
     good = np.logical_or(goodStar, goodGal)
+    if noParent:
+        good = np.logical_and(good, cat.get('parent.'+band) == 0)
     if magCut is not None:
         good = np.logical_and(good, magI > magCut[0])
         good = np.logical_and(good, magI < magCut[1])
@@ -543,4 +545,103 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             tick.label.set_fontsize(fontSize)
         if withLabels:
             ax.legend(loc=1, fontsize=fontSize)
+    return fig
+
+def testClfs(clfList, X, Y, cols=None, magCol=None, fig=None, colList=None, pltKargs=None):
+    if cols is not None:
+        Xsub = X[:,cols]
+    else:
+        Xsub = X
+    trainIndexes, testIndexes = sgsvm.selectTrainTest(Xsub)
+    trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
+    X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
+    X_test = (Xsub[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
+    for i, clf in enumerate(clfList):
+        if colList is None:
+            X_trainSub = X_train
+            X_testSub = X_test
+        else:
+            X_trainSub = X_train[:,colList[i]]
+            X_testSub = X_test[:,colList[i]]
+        clf.fit(X_trainSub, Y_train)
+        print "score_{0}=".format(i), clf.score(X_testSub, Y_test)
+        if pltKargs is None:
+            kargs = {}
+        else:
+            kargs = pltKargs[i]
+        if fig is None:
+            fig = sgsvm.plotMagCuts(clf, X_test=X_testSub, Y_test=Y_test, X=X[testIndexes][:,2], **kargs)
+        else:
+            fig = sgsvm.plotMagCuts(clf, X_test=X_testSub, Y_test=Y_test, X=X[testIndexes][:,2], fig=fig, **kargs)
+    return fig
+
+def testLinearModels(bands=['g', 'r', 'i', 'z', 'y'], catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits',
+                     doMagColors=False, magCut=None, **kargs):
+    clfList = []
+    colList = []
+    pltKargs = []
+    X, Y = sgsvm.loadData(bands=bands, catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, 
+                          withDepth=False, withSeeing=False, withDevShape=False, withExpShape=False, withDevMag=False,
+                          withExpMag=False, withFracDev=False, **kargs)
+    # Extendedness cut
+    colList.append([6])
+    clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
+    pltKargs.append({'linestyle':':', 'xlabel':'Magnitude HSC-I', 'title': 'Linear SVM'})
+    # Extendedness cut and apparent mag
+    colList.append([1, 6])
+    clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
+    pltKargs.append({'linestyle':'--'})
+    # All bands
+    colList.append([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
+    pltKargs.append({'linestyle':'-'})
+    fig = testClfs(clfList, X, Y, colList=colList, pltKargs=pltKargs)
+    return fig
+
+def plotClfsBdy(band='r', catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits',
+                     doMagColors=False, magCut=None, frac=0.3, size=4, **kargs):
+    bands = [band]
+    X, Y = sgsvm.loadData(bands=bands, catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, 
+                          withDepth=False, withSeeing=False, withDevShape=False, withExpShape=False, withDevMag=False,
+                          withExpMag=False, withFracDev=False, **kargs)
+
+    
+    # Extendedness cut
+    fig = plt.figure()
+    nPlot = int(frac*len(X))
+    indexes = np.random.choice(len(X), nPlot, replace=False)
+    for idx in indexes:
+        if Y[idx]:
+            plt.plot(X[idx, 0], X[idx, 1], marker='.', markersize=size, color='blue')
+        else:
+            plt.plot(X[idx, 0], X[idx, 1], marker='.', markersize=size, color='red')
+
+    plt.plot((18.0, 28.0), (0.03, 0.03), linestyle=':', linewidth=3, color='black')
+
+    plt.xlim((20.0, 27.0)); plt.ylim((-0.03, 0.15))
+    plt.xlabel('Magnitude HSC-R', fontsize=18)
+    plt.ylabel('Extendedness HSC-R', fontsize=18)
+
+    ax = fig.get_axes()[0]
+    for tick in ax.xaxis.get_major_ticks():
+        tick.label.set_fontsize(18)
+    for tick in ax.yaxis.get_major_ticks():
+        tick.label.set_fontsize(18)
+
+    Xsub = X
+    trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
+    X_train = (Xsub - trainMean)/trainStd; Y_train = Y
+
+    mags = np.linspace(20.0, 27.0, num=200)
+
+    # Linear Model
+    clf = sgsvm.getClassifier(clfType='linearsvc', C=10.0)
+    clf.fit(X_train, Y_train)
+    fig = sgsvm.plotDecBdy(clf, mags, X=Xsub, Y=Y, linestyle='--', xlim=(20.0, 27.0), ylim=(-0.03, 0.15), fig=fig)
+
+    # RBF Kernel
+    clf = sgsvm.getClassifier(clfType='svc', C=10.0, gamma=0.1)
+    clf.fit(X_train, Y_train)
+    fig = sgsvm.plotDecBdy(clf, mags, X=Xsub, Y=Y, linestyle='-', fig=fig)
+
     return fig

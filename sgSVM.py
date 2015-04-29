@@ -181,7 +181,7 @@ def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType
         goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
         good = np.logical_or(goodStar, goodGal)
         if noParent:
-            good = np.logical_or(good, cat.get('parent.'+band) == 0)
+            good = np.logical_and(good, cat.get('parent.'+band) == 0)
         return mag, ex, snr, good
     elif catType == 'sdss':
         mag = cat.get('cModelMag.'+band)
@@ -296,7 +296,7 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
             X[:, fracDevOffset+i] = fracDev
 
     if magCut != None:
-        mag, ex, good = getMags(cat, 'r', good=good)
+        mag, ex, snr, good = getMags(cat, 'i', good=good)
         good = np.logical_and(good, mag >= magCut[0])
         good = np.logical_and(good, mag <= magCut[1])
     X = X[good]; Y = Y[good]
@@ -363,7 +363,7 @@ def getClassifier(clfType = 'svc', *args, **kargs):
     else:
         raise ValueError("I don't know the classifier type {0}".format(clfType))
 
-def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, num=200,
+def testMagCuts(clf, X_test, Y_test, testMags, magWidth=1.0, minMag=18.0, maxMag=27.0, num=200,
                 doProb=False, probThreshold=0.5, bands=['g', 'r', 'i', 'z', 'y'],
                 doMagColors=True, Y_predict=None):
     if Y_predict is not None:
@@ -379,19 +379,19 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
         ProbsMax = np.zeros(mags.shape)
     for i, mag in enumerate(mags):
         if doMagColors:
-            idxs = np.where(X[:,0] < mag + magWidth/2)
+            idxs = np.where(testMags < mag + magWidth/2)
         else:
-            idxs = np.where(X[:,1] < mag + magWidth/2)
-        X_cuts = X[idxs]
+            idxs = np.where(testMags < mag + magWidth/2)
+        mags_cuts = testMags[idxs]
         X_test_cuts = X_test[idxs]
         Y_test_cuts = Y_test[idxs]
         if Y_predict is not None:
             Y_predict_cuts = Y_predict[idxs]
         if doMagColors:
-            idxs = np.where(X_cuts[:,0] > mag - magWidth/2)
+            idxs = np.where(mags_cuts > mag - magWidth/2)
         else:
-            idxs = np.where(X_cuts[:,1] > mag - magWidth/2)
-        X_cuts = X_cuts[idxs]
+            idxs = np.where(mags_cuts > mag - magWidth/2)
+        mags_cuts = mags_cuts[idxs]
         X_test_cuts = X_test_cuts[idxs]
         Y_test_cuts = Y_test_cuts[idxs]
         if Y_predict is not None:
@@ -436,7 +436,7 @@ def testMagCuts(clf, X_test, Y_test, X, magWidth=1.0, minMag=18.0, maxMag=27.0, 
 
 def plotMagCuts(clf, X_test=None, Y_test=None, X=None, fig=None, linestyle='-', mags=None,
                 starCompl=None, starPurity=None, galCompl=None, Probs=None, ProbsMin=None,
-                ProbsMax=None, galPurity=None, title='SVM Linear', **kargs):
+                ProbsMax=None, galPurity=None, title=None, xlabel=None, **kargs):
     if 'doProb' in kargs:
         doProb = kargs['doProb']
     else:
@@ -448,7 +448,7 @@ def plotMagCuts(clf, X_test=None, Y_test=None, X=None, fig=None, linestyle='-', 
     if 'maxMag' in kargs:
         maxMag = kargs['maxMag']
     else:
-        maxMag = 27.0
+        maxMag = 26.0
     if doProb:
         if mags == None or starCompl == None or starPurity == None or galCompl == None\
            or galPurity == None or Probs == None or ProbsMin == None or ProbsMax == None:
@@ -459,8 +459,14 @@ def plotMagCuts(clf, X_test=None, Y_test=None, X=None, fig=None, linestyle='-', 
     if not fig:
         fig = plt.figure()
         ax = plt.subplot(1, 2, 0)
-        ax.set_title(title + " (Stars)", fontsize=18)
-        ax.set_xlabel("Mag Cut Center", fontsize=18)
+        if title is not None:
+            ax.set_title(title + " (Stars)", fontsize=18)
+        else:
+            ax.set_title("Stars", fontsize=18)
+        if xlabel is None:
+            ax.set_xlabel("Mag Cut Center", fontsize=18)
+        else:
+            ax.set_xlabel(xlabel, fontsize=18)
         ax.set_ylabel("Star Scores", fontsize=18)
         ax.set_xlim(minMag, maxMag)
         ax.set_ylim(0.0, 1.0)
@@ -479,8 +485,14 @@ def plotMagCuts(clf, X_test=None, Y_test=None, X=None, fig=None, linestyle='-', 
     
     if not hadFig:
         ax = plt.subplot(1, 2, 1)
-        ax.set_title(title + " (Galaxies)", fontsize=18)
-        ax.set_xlabel("Mag Cut Center", fontsize=18)
+        if title is not None:
+            ax.set_title(title + " (Galaxies)", fontsize=18)
+        else:
+            ax.set_title("Galaxies", fontsize=18)
+        if xlabel is None:
+            ax.set_xlabel("Mag Cut Center", fontsize=18)
+        else:
+            ax.set_xlabel(xlabel, fontsize=18)
         ax.set_ylabel("Galaxy Scores", fontsize=18)
         ax.set_xlim(minMag, maxMag)
         ax.set_ylim(0.0, 1.0)
@@ -534,7 +546,7 @@ def plotDecFunc(clf, X, X_plot=None):
 
     return fig
 
-def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle='-', const=None):
+def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle='-', const=None, ylim=None, xlim=None):
     if X is None:
         magsStd = mags
         exMu = 0.0; exSigma = 1.0
@@ -585,6 +597,10 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
         plt.xlabel('Magnitude HSC-R', fontsize=18)
         plt.ylabel('Extendedness HSC-R', fontsize=18)
         ax.legend(loc='upper right', fontsize=18)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+        if xlim is not None:
+            ax.set_xlim(xlim)
     else:
         ax = fig.get_axes()[0]
         ax.plot(mags, exts, color='k', linestyle=linestyle, linewidth=2)
@@ -601,11 +617,13 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
         X, Y = loadData(bands=[b], catType=catType, inputFile=cat, doMagColors=doMagColors, magCut=magCut, **kargs)
         print "I'll use {0} objects to train on this band".format(len(X))
         if cols is not None:
-            X = X[:,cols]
-        trainIndexes, testIndexes = selectTrainTest(X)
-        trainMean = np.mean(X[trainIndexes], axis=0); trainStd = np.std(X[trainIndexes], axis=0)
-        X_train = (X[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
-        X_test = (X[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
+            Xsub = X[:,cols]
+        else:
+            Xsub = X
+        trainIndexes, testIndexes = selectTrainTest(Xsub)
+        trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
+        X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
+        X_test = (Xsub[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
         estimator = getClassifier(clfType=clfType, **kargs)
         clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
         clf.fit(X_train, Y_train)
@@ -616,15 +634,15 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
         print clf.best_params_
         score = clf.score(X_test, Y_test)
         print "score=", score
-        trainMean = np.mean(X, axis=0); trainStd = np.std(X, axis=0)
-        X_train = (X - trainMean)/trainStd; Y_train = Y
+        trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
+        X_train = (Xsub - trainMean)/trainStd; Y_train = Y
         clf.best_estimator_.fit(X_train, Y_train)
         coeffs = clf.best_estimator_.coef_/trainStd
         print "coeffs=", coeffs
         intercept = clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
         print "intercept=", intercept
         if cols == [1]:
-            print "Extendedness_cut=".format(intercept[0]/coeffs[0][0])
+            print "Extendedness_cut={0}".format(-intercept[0]/coeffs[0][0])
 
 def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
         magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
