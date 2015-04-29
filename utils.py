@@ -547,7 +547,7 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             ax.legend(loc=1, fontsize=fontSize)
     return fig
 
-def testClfs(clfList, X, Y, cols=None, magCol=None, fig=None, colList=None, pltKargs=None):
+def testClfs(clfList, X, Y, cols=None, magCol=None, fig=None, colList=None, pltKargs=None, magIdx=2, printCoeffs=False):
     if cols is not None:
         Xsub = X[:,cols]
     else:
@@ -570,23 +570,45 @@ def testClfs(clfList, X, Y, cols=None, magCol=None, fig=None, colList=None, pltK
         else:
             kargs = pltKargs[i]
         if fig is None:
-            fig = sgsvm.plotMagCuts(clf, X_test=X_testSub, Y_test=Y_test, X=X[testIndexes][:,2], **kargs)
+            fig = sgsvm.plotMagCuts(clf, X_test=X_testSub, Y_test=Y_test, X=X[testIndexes][:,magIdx], **kargs)
         else:
-            fig = sgsvm.plotMagCuts(clf, X_test=X_testSub, Y_test=Y_test, X=X[testIndexes][:,2], fig=fig, **kargs)
+            fig = sgsvm.plotMagCuts(clf, X_test=X_testSub, Y_test=Y_test, X=X[testIndexes][:,magIdx], fig=fig, **kargs)
+        if printCoeffs:
+            trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
+            X_train = (Xsub - trainMean)/trainStd; Y_train = Y
+            if colList is None:
+                X_trainSub = X_train
+            else:
+                X_trainSub = X_train[:,colList[i]]
+                trainMean = np.mean(Xsub[:, colList[i]], axis=0); trainStd = np.std(Xsub[:, colList[i]], axis=0)
+            clf.fit(X_trainSub, Y_train)
+            print "coeffs*std=", clf.coef_
+            coeffs = clf.coef_/trainStd
+            coeffs = coeffs[0]
+            intercept = clf.intercept_ - np.sum(clf.coef_*trainMean/trainStd)
+            intercept = intercept[0]
+            #coeffs /= intercept; intercept /= intercept
+            print "coeffs=", coeffs
+            print "intercept=", intercept
+            if len(coeffs) == 1:
+                print "Cut={0}".format(-intercept/coeffs[0])
     return fig
 
 def testLinearModels(bands=['g', 'r', 'i', 'z', 'y'], catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits',
-                     doMagColors=False, magCut=None, **kargs):
+                     doMagColors=False, magCut=None, galSub=False, galFrac=0.1, equalNumbers=True, magIdx=2, **kargs):
     clfList = []
     colList = []
     pltKargs = []
     X, Y = sgsvm.loadData(bands=bands, catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, 
                           withDepth=False, withSeeing=False, withDevShape=False, withExpShape=False, withDevMag=False,
                           withExpMag=False, withFracDev=False, **kargs)
+    if galSub:
+        X, Y = sgsvm.galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
+
     # Extendedness cut
     colList.append([6])
     clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
-    pltKargs.append({'linestyle':':', 'xlabel':'Magnitude HSC-I', 'title': 'Linear SVM'})
+    pltKargs.append({'linestyle':':', 'xlabel':'Magnitude HSC-I', 'title': 'Linear SVM with Equal Numbers'})
     # Extendedness cut and apparent mag
     colList.append([1, 6])
     clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
@@ -595,17 +617,71 @@ def testLinearModels(bands=['g', 'r', 'i', 'z', 'y'], catType='hsc', inputFile='
     colList.append([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
     pltKargs.append({'linestyle':'-'})
-    fig = testClfs(clfList, X, Y, colList=colList, pltKargs=pltKargs)
+    fig = testClfs(clfList, X, Y, colList=colList, pltKargs=pltKargs, printCoeffs=True, magIdx=magIdx)
     return fig
 
+def testRBFModels(bands=['g', 'r', 'i', 'z', 'y'], catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits',
+                  doMagColors=False, magCut=None, galSub=False, galFrac=0.1, equalNumbers=True, magIdx=2, **kargs):
+    clfList = []
+    colList = []
+    pltKargs = []
+    X, Y = sgsvm.loadData(bands=bands, catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, 
+                          withDepth=False, withSeeing=False, withDevShape=False, withExpShape=False, withDevMag=False,
+                          withExpMag=False, withFracDev=False, **kargs)
+    if galSub:
+        X, Y = sgsvm.galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
+
+    # Extendedness cut and apparent mag
+    colList.append([1, 6])
+    clfList.append(sgsvm.getClassifier(clfType='svc', C=10.0, gamma=0.1))
+    pltKargs.append({'linestyle':'--'})
+    # All bands
+    colList.append([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    clfList.append(sgsvm.getClassifier(clfType='svc', C=10.0, gamma=0.1))
+    pltKargs.append({'linestyle':'-'})
+    fig = testClfs(clfList, X, Y, colList=colList, pltKargs=pltKargs, printCoeffs=False, magIdx=magIdx)
+    return fig
+
+def testSingleBandModels(band='r', catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits',
+                         doMagColors=False, magCut=None, X=None, Y=None, **kargs):
+    clfList = []
+    colList = []
+    pltKargs = []
+    if X is None or Y is None:
+        bands = ['i', band]
+        X, Y = sgsvm.loadData(bands=bands, catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, 
+                              withDepth=False, withSeeing=False, withDevShape=True, withExpShape=True, withDevMag=True,
+                              withExpMag=True, withFracDev=True, **kargs)
+    # Linear Model
+    #colList.append([1, 3, 6, 7, 10, 11, 13, 15])
+    #colList.append([7])
+    colList.append([1, 3, 6, 7, 10, 11, 13, 15])
+    clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
+    pltKargs.append({'linestyle':'--', 'xlabel':'Magnitude HSC-I', 'title': 'Single Band SVM'})
+    # Extendedness cut and apparent mag
+    #colList.append([1, 3, 7, 11, 13, 15])
+    colList.append([1, 3, 6, 7, 10, 11, 13, 15])
+    clfList.append(sgsvm.getClassifier(clfType='svc', C=10.0, gamma=0.1))
+    pltKargs.append({'linestyle':'-'})
+    # Extendedness cut
+    colList.append([3])
+    clfList.append(sgsvm.getClassifier(clfType='linearsvc', C=10.0))
+    pltKargs.append({'linestyle':':'})
+    fig = testClfs(clfList, X, Y, colList=colList, pltKargs=pltKargs, magIdx=1)
+    return fig, X, Y
+
 def plotClfsBdy(band='r', catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits',
-                     doMagColors=False, magCut=None, frac=0.3, size=4, **kargs):
+                doMagColors=False, magCut=None, frac=0.3, size=4, galSub=False, galFrac=0.1, equalNumbers=True,
+                **kargs):
+
     bands = [band]
     X, Y = sgsvm.loadData(bands=bands, catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, 
                           withDepth=False, withSeeing=False, withDevShape=False, withExpShape=False, withDevMag=False,
                           withExpMag=False, withFracDev=False, **kargs)
 
-    
+    if galSub:
+        X, Y = sgsvm.galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
+
     # Extendedness cut
     fig = plt.figure()
     nPlot = int(frac*len(X))

@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.misc import comb
 from scipy.optimize import brentq
+from copy import deepcopy
 
 from sklearn import preprocessing
 from sklearn.svm import SVC, LinearSVC 
@@ -127,7 +128,6 @@ def sampleWeightPosterior(clf, nSample=100):
 
 def getBayesianPosteriors(clf, X, nSample=100):
     wSample = sampleWeightPosterior(clf, nSample=nSample)
-    from copy import deepcopy
     clfTemp = deepcopy(clf)
     bayesianPost = np.zeros((len(X),))
     for i in range(nSample):
@@ -352,6 +352,26 @@ def selectTrainTest(X, nTrain = 0.8, nTest = 0.2):
     trainIndexes = (indexes[:nTrain],)
     testIndexes = (indexes[nTrain:nTrain+nTest],)
     return trainIndexes, testIndexes
+
+def galaxySubSample(X, Y, equalNumbers=True, galFrac=0.1):
+    nTot = len(Y)
+    nStar = np.sum(Y)
+    nGal = nTot - nStar
+    if equalNumbers:
+        nSub = nStar    
+    else:
+        nSub = int(galFrac*nGal)   
+    idx = np.arange(nTot)
+    stars = Y
+    gals = np.logical_not(Y)
+    galIdx = idx[gals]
+    galIdxSub = np.random.choice(galIdx, size=nSub, replace=False)
+    goodGals = np.zeros(idx.shape, dtype=bool)
+    for i in range(len(goodGals)):
+        goodGals[i] = idx[i] in galIdxSub
+    good = np.logical_or(stars, goodGals)
+    Xsub = X[good]; Ysub = Y[good]
+    return Xsub, Ysub
 
 def getClassifier(clfType = 'svc', *args, **kargs):
     if clfType == 'svc':
@@ -609,27 +629,43 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
 
 def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[1.0, 10.0, 100.0]},
              magCut=None, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
-             seed=0, cols=None, makePlots=None, doMagColors=False, **kargs):
+             seed=0, cols=None, makePlots=None, doMagColors=False, samePop=True, galSub=False, galFrac=0.1, equalNumbers=True, 
+             clfKargs={'C': 10.0}, X=None, Y=None, **kargs):
     np.random.seed(0)
     cat = afwTable.SourceCatalog.readFits(inputFile)
-    for b in bands:
+    if samePop:
+        assert cols is not None
+        if X is None or Y is None:
+            X, Y = loadData(bands=bands, catType=catType, inputFile=cat, doMagColors=doMagColors, magCut=magCut, **kargs)
+            if galSub:
+                X, Y = galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
+    for i, b in enumerate(bands):
         print "Running analysis for band HSC-{0}".format(b.upper())
-        X, Y = loadData(bands=[b], catType=catType, inputFile=cat, doMagColors=doMagColors, magCut=magCut, **kargs)
-        print "I'll use {0} objects to train on this band".format(len(X))
-        if cols is not None:
-            Xsub = X[:,cols]
+        if samePop:
+            colsBand = deepcopy(cols)
+            for j in range(len(colsBand)):
+                colsBand[j] += i
+            Xsub = X[:,colsBand]
         else:
-            Xsub = X
+            X, Y = loadData(bands=[b], catType=catType, inputFile=cat, doMagColors=doMagColors, magCut=magCut, **kargs)
+            print "I'll use {0} objects to train on this band".format(len(X))
+            if galSub:
+                X, Y = galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
+
+            if cols is not None:
+                Xsub = X[:,cols]
+            else:
+                Xsub = X
         trainIndexes, testIndexes = selectTrainTest(Xsub)
         trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
         X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
         X_test = (Xsub[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
-        estimator = getClassifier(clfType=clfType, **kargs)
+        estimator = getClassifier(clfType=clfType, **clfKargs)
         clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
         clf.fit(X_train, Y_train)
         if makePlots is not None:
             if b in makePlots:
-                plotMagCuts(clf, X_test=X_test, Y_test=Y_test, X=X[testIndexes])
+                plotMagCuts(clf, X_test=X_test, Y_test=Y_test, X=X[testIndexes][:,2])
         print "The best estimator parameters are"
         print clf.best_params_
         score = clf.score(X_test, Y_test)
@@ -637,12 +673,17 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
         trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
         X_train = (Xsub - trainMean)/trainStd; Y_train = Y
         clf.best_estimator_.fit(X_train, Y_train)
-        coeffs = clf.best_estimator_.coef_/trainStd
-        print "coeffs=", coeffs
-        intercept = clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
-        print "intercept=", intercept
-        if cols == [1]:
-            print "Extendedness_cut={0}".format(-intercept[0]/coeffs[0][0])
+        if clfType == 'logit' or clfType == 'linearsvc':
+            coeffs = clf.best_estimator_.coef_/trainStd
+            coeffs = coeffs[0]
+            intercept = clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
+            intercept = intercept[0]
+            coeffs /= intercept; intercept /= intercept
+            print "coeffs=", coeffs
+            print "intercept=", intercept
+            if len(cols) == 1:
+                print "Cut={0}".format(-intercept/coeffs[0])
+    return X, Y
 
 def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
         magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
