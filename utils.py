@@ -683,6 +683,14 @@ def plotClfsBdy(band='r', catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc
         X, Y = sgsvm.galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
 
     # Extendedness cut
+    Xsub = X[:, [1]]
+    trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
+    X_train = (Xsub - trainMean)/trainStd; Y_train = Y
+    clf = sgsvm.getClassifier(clfType='linearsvc', C=10.0)
+    clf.fit(X_train, Y_train)
+    coeffs = clf.coef_/trainStd
+    intercept = clf.intercept_ - np.sum(clf.coef_*trainMean/trainStd)
+    cut = -intercept[0]/coeffs[0]
     fig = plt.figure()
     nPlot = int(frac*len(X))
     indexes = np.random.choice(len(X), nPlot, replace=False)
@@ -692,11 +700,11 @@ def plotClfsBdy(band='r', catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc
         else:
             plt.plot(X[idx, 0], X[idx, 1], marker='.', markersize=size, color='red')
 
-    plt.plot((18.0, 28.0), (0.03, 0.03), linestyle=':', linewidth=3, color='black')
+    plt.plot((18.0, 28.0), (cut, cut), linestyle=':', linewidth=3, color='black')
 
     plt.xlim((20.0, 27.0)); plt.ylim((-0.03, 0.15))
-    plt.xlabel('Magnitude HSC-R', fontsize=18)
-    plt.ylabel('Extendedness HSC-R', fontsize=18)
+    plt.xlabel('Magnitude HSC-{0}'.format(band.upper()), fontsize=18)
+    plt.ylabel('Extendedness HSC-{0}'.format(band.upper()), fontsize=18)
 
     ax = fig.get_axes()[0]
     for tick in ax.xaxis.get_major_ticks():
@@ -721,3 +729,11 @@ def plotClfsBdy(band='r', catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc
     fig = sgsvm.plotDecBdy(clf, mags, X=Xsub, Y=Y, linestyle='-', fig=fig)
 
     return fig
+
+def makeSingleBandPlot(X=None, Y=None, galSub=False):
+    fig, X, Y = sgsvm.fitBands(cols=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50], makePlots=['r'], clfType='svc', X=X, Y=Y,
+                               compareToExtCut=True, galSub=galSub, linestyle='-', clfKargs={'C':10.0, 'gamma':0.1},
+                               skipBands=['g', 'i', 'z', 'y'], withCV=False)
+    fig, X, Y = sgsvm.fitBands(cols=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50], makePlots=['r'], clfType='linearsvc', X=X, Y=Y,
+                               compareToExtCut=False, galSub=galSub, linestyle='--', fig=fig, skipBands=['g', 'i', 'z', 'y'])
+    return fig, X, Y

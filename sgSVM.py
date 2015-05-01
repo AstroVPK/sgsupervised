@@ -7,6 +7,7 @@ from scipy.misc import comb
 from scipy.optimize import brentq
 from copy import deepcopy
 
+from astroML.decorators import pickle_results
 from sklearn import preprocessing
 from sklearn.svm import SVC, LinearSVC 
 from sklearn.linear_model import LogisticRegression 
@@ -193,14 +194,27 @@ def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType
 
 def loadData(catType='hsc', **kargs):
     if catType == 'hsc':
+        bands = kargs['bands']
+        kargs.pop('bands')
+        if 'g' not in bands:
+            kargs['withG'] = False
+        if 'r' not in bands:
+            kargs['withR'] = False
+        if 'i' not in bands:
+            kargs['withI'] = False
+        if 'z' not in bands:
+            kargs['withZ'] = False
+        if 'y' not in bands:
+            kargs['withY'] = False
         return _loadDataHSC(**kargs)
     elif catType == 'sdss':
         return _loadDataSDSS(**kargs)
     else:
         raise ValueError("Unkown catalog type {0}".format(catType))
 
+@pickle_results("hscXY.pkl")
 def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits", withMags=True, withExt=True,
-                 bands=['g', 'r', 'i', 'z', 'y'], doMagColors=True, magCut=None, withDepth=True,
+                 withG=True, withR=True, withI=True, withZ=True, withY=True, doMagColors=True, magCut=None, withDepth=True,
                  withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True,
                  withExpMag=True, withFracDev=True, noParent=True):
     if (not withMags) and (not withExt):
@@ -215,6 +229,17 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
     else:
         cat = inputFile
     Y = cat.get('stellar')
+    bands = []
+    if withG:
+        bands.append('g') 
+    if withR:
+        bands.append('r') 
+    if withI:
+        bands.append('i') 
+    if withZ:
+        bands.append('z') 
+    if withY:
+        bands.append('y') 
     nBands = len(bands)
     nFeatures = nBands*(int(withMags) + int(withExt) + int(withDepth) + int(withSeeing) +\
                         2*int(withDevShape) +2*int(withExpShape) + int(withDevMag) +\
@@ -590,7 +615,7 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
     exts = np.zeros(mags.shape)
     for i, mag in enumerate(magsStd):
         try:
-            brentMin = -1.0; brentMax = 1.0
+            brentMin = -2.0; brentMax = 0.5
             exts[i] = brentq(F, brentMin, brentMax, args=(mag,))
         except:
             print "mag=", mag*magSigma + magMu
@@ -630,16 +655,20 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
 def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[1.0, 10.0, 100.0]},
              magCut=None, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
              seed=0, cols=None, makePlots=None, doMagColors=False, samePop=True, galSub=False, galFrac=0.1, equalNumbers=True, 
-             clfKargs={'C': 10.0}, X=None, Y=None, **kargs):
+             withCV=True, clfKargs={'C': 10.0}, X=None, Y=None, fig=None, compareToExtCut=True, linestyle='--', 
+             skipBands=[], **kargs):
     np.random.seed(0)
     cat = afwTable.SourceCatalog.readFits(inputFile)
     if samePop:
         assert cols is not None
         if X is None or Y is None:
             X, Y = loadData(bands=bands, catType=catType, inputFile=cat, doMagColors=doMagColors, magCut=magCut, **kargs)
-            if galSub:
-                X, Y = galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
+        if galSub:
+            X, Y = galaxySubSample(X, Y, galFrac=galFrac, equalNumbers=equalNumbers)
+        trainIndexes, testIndexes = selectTrainTest(X)
     for i, b in enumerate(bands):
+        if b in skipBands:
+            continue
         print "Running analysis for band HSC-{0}".format(b.upper())
         if samePop:
             colsBand = deepcopy(cols)
@@ -656,34 +685,63 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
                 Xsub = X[:,cols]
             else:
                 Xsub = X
-        trainIndexes, testIndexes = selectTrainTest(Xsub)
+        if not samePop:
+            trainIndexes, testIndexes = selectTrainTest(Xsub)
         trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
         X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
         X_test = (Xsub[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
         estimator = getClassifier(clfType=clfType, **clfKargs)
-        clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
+        if withCV:
+            clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
+        else:
+            clf = estimator
         clf.fit(X_train, Y_train)
         if makePlots is not None:
             if b in makePlots:
-                plotMagCuts(clf, X_test=X_test, Y_test=Y_test, X=X[testIndexes][:,2])
-        print "The best estimator parameters are"
-        print clf.best_params_
+                if fig is None:
+                    fig = plotMagCuts(clf, X_test=X_test, Y_test=Y_test, X=X[testIndexes][:,2], linestyle=linestyle,
+                                      xlabel='Magnitude HSC-I', title='Single Band SVM')
+                else:
+                    fig = plotMagCuts(clf, X_test=X_test, Y_test=Y_test, X=X[testIndexes][:,2], linestyle=linestyle, fig=fig,
+                                      xlabel='Magnitude HSC-I', title='Single Band SVM')
+        if withCV:
+            print "The best estimator parameters are"
+            print clf.best_params_
+            clf = clf.best_estimator_
         score = clf.score(X_test, Y_test)
         print "score=", score
         trainMean = np.mean(Xsub, axis=0); trainStd = np.std(Xsub, axis=0)
         X_train = (Xsub - trainMean)/trainStd; Y_train = Y
-        clf.best_estimator_.fit(X_train, Y_train)
+        clf.fit(X_train, Y_train)
         if clfType == 'logit' or clfType == 'linearsvc':
-            coeffs = clf.best_estimator_.coef_/trainStd
+            print "coeffs*std= {0:.2f} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} & {5:.2f} & {6:.2f} & {7:.2f} & {8:.2f} & {9:.2f} & {10:.2f}".format(*tuple(clf.coef_[0]))
+            coeffs = clf.coef_/trainStd
             coeffs = coeffs[0]
-            intercept = clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
+            intercept = clf.intercept_ - np.sum(clf.coef_*trainMean/trainStd)
             intercept = intercept[0]
-            coeffs /= intercept; intercept /= intercept
             print "coeffs=", coeffs
             print "intercept=", intercept
             if len(cols) == 1:
                 print "Cut={0}".format(-intercept/coeffs[0])
-    return X, Y
+    if compareToExtCut:
+        assert samePop
+        cols = [9]
+        Xsub = X[:,cols]
+        trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
+        X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
+        X_test = (Xsub[testIndexes] - trainMean)/trainStd; Y_test = Y[testIndexes]
+        estimator = getClassifier(clfType='linearsvc')
+        if 'gamma' in param_grid:
+            param_grid.pop('gamma')
+        clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
+        clf.fit(X_train, Y_train)
+        print "score=", clf.score(X_test, Y_test)
+        coeffs = clf.best_estimator_.coef_/trainStd
+        intercept = clf.best_estimator_.intercept_ - np.sum(clf.best_estimator_.coef_*trainMean/trainStd)
+        intercept = intercept[0]
+        print "Cut={0}".format(-intercept/coeffs[0])
+        fig = plotMagCuts(clf, X_test=X_test, Y_test=Y_test, X=X[testIndexes][:,2], fig=fig, linestyle=':')
+    return fig, X, Y
 
 def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
         magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
