@@ -5,7 +5,8 @@ import lsst.afw.table as afwTable
 
 import sgSVM as sgsvm
 
-def getGood(cat, band='i', magCut=None, noParent=True):
+def getGood(cat, band='i', magCut=None, noParent=True, iBandCut=True,
+            sameBandCut=False, starDiff=1.0, galDiff=2.0, magAutoShift=0.0):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -13,17 +14,27 @@ def getGood(cat, band='i', magCut=None, noParent=True):
     fluxPsf = cat.get('flux.psf.'+band)
     ext = -2.5*np.log10(fluxPsf/flux)
     good = np.logical_and(True, ext < 5.0)
-    if band == 'i':
-        fluxI = flux
-    else:
-        fluxI = cat.get('cmodel.flux.i')
-    fluxZeroI = cat.get('flux.zeromag.i')
-    magI = -2.5*np.log10(fluxI/fluxZeroI)
-    magAuto = cat.get('mag.auto')
-    stellar = cat.get('stellar')
-    goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
-    goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
-    good = np.logical_or(goodStar, goodGal)
+    if iBandCut:
+        if band == 'i':
+            fluxI = flux
+        else:
+            fluxI = cat.get('cmodel.flux.i')
+        fluxZeroI = cat.get('flux.zeromag.i')
+        magI = -2.5*np.log10(fluxI/fluxZeroI)
+        magAuto = cat.get('mag.auto')
+        stellar = cat.get('stellar')
+        goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
+        goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
+        good = np.logical_or(goodStar, goodGal)
+    elif sameBandCut:
+        fluxZero = cat.get('flux.zeromag.'+band)
+        mag = -2.5*np.log10(flux/fluxZero)
+        magAuto = cat.get('mag.auto')
+        magAuto += magAutoShift
+        stellar = cat.get('stellar')
+        goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(mag < magAuto + starDiff, mag > magAuto - starDiff)))
+        goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff, mag > magAuto - galDiff)))
+        good = np.logical_or(goodStar, goodGal)
     if noParent:
         good = np.logical_and(good, cat.get('parent.'+band) == 0)
     if magCut is not None:
@@ -347,7 +358,7 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
 
 def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
                   xlim=(17.5, 28.0), ylim=(-0.05, 0.5), trueSample=False,
-                  frac=0.1, type='ext', data=None, xType='mag'):
+                  frac=0.1, type='ext', data=None, xType='mag', iBandCut=True):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -370,7 +381,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
             else:
                 raise ValueError("I don't recognize the xType value")
             ext = -2.5*np.log10(fluxPsf/flux)
-            good = getGood(cat, band)
+            good = getGood(cat, band, iBandCut=iBandCut)
             if data is None:
                 if type == 'ext':
                     data = ext
@@ -422,7 +433,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
         stellar = cat.get('stellar')
     mag = -2.5*np.log10(flux/fluxZero)
     ext = -2.5*np.log10(fluxPsf/flux)
-    good = getGood(cat, band)
+    good = getGood(cat, band, iBandCut=iBandCut)
     if data is None:
         if type == 'ext':
             data = ext
@@ -734,6 +745,12 @@ def makeSingleBandPlot(X=None, Y=None, galSub=False):
     fig, X, Y = sgsvm.fitBands(cols=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50], makePlots=['r'], clfType='svc', X=X, Y=Y,
                                compareToExtCut=True, galSub=galSub, linestyle='-', clfKargs={'C':10.0, 'gamma':0.1},
                                skipBands=['g', 'i', 'z', 'y'], withCV=False)
-    fig, X, Y = sgsvm.fitBands(cols=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50], makePlots=['r'], clfType='linearsvc', X=X, Y=Y,
+    fig, X, Y = sgsvm.fitBands(cols=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50], makePlots=['r'], clfType='logit', X=X, Y=Y,
                                compareToExtCut=False, galSub=galSub, linestyle='--', fig=fig, skipBands=['g', 'i', 'z', 'y'])
     return fig, X, Y
+
+def fitBandsSingleExp(bands=['g', 'r', 'i', 'z', 'y'], **kargs):
+    for b in bands:
+        inputFile = '/u/garmilla/Data/HSC/sgClassCosmosSrcHsc-121120150413{0}.fits'.format(b.upper())
+        sgsvm.fitBands(bands=[b], inputFile=inputFile, samePop=False, iBandCut=False, sameBandCut=True, galDiff=10.0, starDiff=10.0, 
+                       **kargs)

@@ -154,7 +154,8 @@ def getMag(cat, band, magType):
     mag = -2.5*np.log10(rat)
     return mag
 
-def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType='hsc', noParent=True):
+def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType='hsc', 
+            noParent=True, iBandCut=True, sameBandCut=False, starDiff=1.0, galDiff=2.0, magAutoShift=0.0):
     if catType == 'hsc':
         f = cat.get('cmodel.flux.'+band)
         fErr = cat.get('cmodel.flux.err.'+band)
@@ -169,18 +170,26 @@ def getMags(cat, band, checkExtendedness=True, good=True, checkSNR=True, catType
         if checkExtendedness:
             # Discard objects with extreme extendedness
             good = np.logical_and(good, ex < 5.0)
-        if band == 'i':
-            fluxI = f
-            fluxZeroI = f0
-        else:
-            fluxI = cat.get('cmodel.flux.i')
-            fluxZeroI = cat.get('flux.zeromag.i')
-        magI = -2.5*np.log10(fluxI/fluxZeroI)
-        magAuto = cat.get('mag.auto')
-        stellar = cat.get('stellar')
-        goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
-        goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
-        good = np.logical_or(goodStar, goodGal)
+        if iBandCut:
+            if band == 'i':
+                fluxI = f
+                fluxZeroI = f0
+            else:
+                fluxI = cat.get('cmodel.flux.i')
+                fluxZeroI = cat.get('flux.zeromag.i')
+            magI = -2.5*np.log10(fluxI/fluxZeroI)
+            magAuto = cat.get('mag.auto')
+            stellar = cat.get('stellar')
+            goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
+            goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
+            good = np.logical_or(goodStar, goodGal)
+        elif sameBandCut:
+            magAuto = cat.get('mag.auto')
+            magAuto += magAutoShift
+            stellar = cat.get('stellar')
+            goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(mag < magAuto + starDiff, mag > magAuto - starDiff)))
+            goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff, mag > magAuto - galDiff)))
+            good = np.logical_or(goodStar, goodGal)
         if noParent:
             good = np.logical_and(good, cat.get('parent.'+band) == 0)
         return mag, ex, snr, good
@@ -212,11 +221,11 @@ def loadData(catType='hsc', **kargs):
     else:
         raise ValueError("Unkown catalog type {0}".format(catType))
 
-@pickle_results("hscXY.pkl")
+#@pickle_results("hscXY.pkl")
 def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits", withMags=True, withExt=True,
                  withG=True, withR=True, withI=True, withZ=True, withY=True, doMagColors=True, magCut=None, withDepth=True,
                  withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True,
-                 withExpMag=True, withFracDev=True, noParent=True):
+                 withExpMag=True, withFracDev=True, noParent=True, iBandCut=True, sameBandCut=False, starDiff=1.0, galDiff=2.0):
     if (not withMags) and (not withExt):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
@@ -279,7 +288,7 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
     X = np.zeros(shape)
     good=True
     for i, b in enumerate(bands):
-        mag, ex, snr, good = getMags(cat, b, good=good, noParent=noParent)
+        mag, ex, snr, good = getMags(cat, b, good=good, noParent=noParent, iBandCut=iBandCut, sameBandCut=sameBandCut, starDiff=starDiff, galDiff=galDiff)
         if withMags:
             good = np.logical_and(good, np.logical_not(np.isnan(mag)))
             good = np.logical_and(good, np.logical_not(np.isinf(mag)))
@@ -655,7 +664,7 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
 def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[1.0, 10.0, 100.0]},
              magCut=None, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
              seed=0, cols=None, makePlots=None, doMagColors=False, samePop=True, galSub=False, galFrac=0.1, equalNumbers=True, 
-             withCV=True, clfKargs={'C': 10.0}, X=None, Y=None, fig=None, compareToExtCut=True, linestyle='--', 
+             withCV=True, clfKargs={'C': 10.0}, X=None, Y=None, fig=None, compareToExtCut=False, linestyle='--', 
              skipBands=[], **kargs):
     np.random.seed(0)
     cat = afwTable.SourceCatalog.readFits(inputFile)
@@ -721,11 +730,12 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
             intercept = intercept[0]
             print "coeffs=", coeffs
             print "intercept=", intercept
-            if len(cols) == 1:
-                print "Cut={0}".format(-intercept/coeffs[0])
+            if cols is not None:
+                if len(cols) == 1:
+                    print "Cut={0}".format(-intercept/coeffs[0])
     if compareToExtCut:
         assert samePop
-        cols = [9]
+        cols = [6]
         Xsub = X[:,cols]
         trainMean = np.mean(Xsub[trainIndexes], axis=0); trainStd = np.std(Xsub[trainIndexes], axis=0)
         X_train = (Xsub[trainIndexes] - trainMean)/trainStd; Y_train = Y[trainIndexes]
