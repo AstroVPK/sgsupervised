@@ -144,6 +144,8 @@ def getPsfShape(cat, band, type):
         column = 'shape.sdss.psf.{0}'.format(band)
     elif type == 'hsm':
         column = 'shape.hsm.psfMoments.{0}'.format(band)
+    elif type == 'multishapelet':
+        column = 'multishapelet.psf.ellipse.{0}'.format(band)
     else:
         raise ValueError('PSF shape type {0} is not implemented'.format(type))
     for i, record in enumerate(cat): 
@@ -348,7 +350,7 @@ def _loadDataHSC(inputFile = "/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-
             good = np.logical_and(good, np.isfinite(fracDev))
             X[:, fracDevOffset+i] = fracDev
         if withPsfShape:
-            q, hlr = getPsfShape(cat, b, 'sdss')
+            q, hlr = getPsfShape(cat, b, 'multishapelet')
             good = np.logical_and(good, np.isfinite(q))
             good = np.logical_and(good, np.isfinite(hlr))
             X[:, psfShapeOffset+i] = q
