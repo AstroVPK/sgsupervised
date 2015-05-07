@@ -137,6 +137,22 @@ def getBayesianPosteriors(clf, X, nSample=100):
         bayesianPost += clfTemp.predict_proba(X)[:,1]
     return bayesianPost/nSample
 
+def getPsfShape(cat, band, type):
+    q = np.zeros((len(cat),))
+    rDet = np.zeros(q.shape)
+    if type == 'sdss':
+        column = 'shape.sdss.psf.{0}'.format(band)
+    elif type == 'hsm':
+        column = 'shape.hsm.psfMoments.{0}'.format(band)
+    else:
+        raise ValueError('PSF shape type {0} is not implemented'.format(type))
+    for i, record in enumerate(cat): 
+        ellipse = afwGeom.ellipses.Axes(record.get(column))
+        A = ellipse.getA(); B = ellipse.getB()
+        q[i] = B/A
+        rDet[i] = np.sqrt(A*B)
+    return q, rDet
+
 def getShape(cat, band, type):
     q = np.zeros((len(cat),))
     rDet = np.zeros(q.shape)
@@ -222,10 +238,10 @@ def loadData(catType='hsc', **kargs):
         raise ValueError("Unkown catalog type {0}".format(catType))
 
 #@pickle_results("hscXY.pkl")
-def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits", withMags=True, withExt=True,
+def _loadDataHSC(inputFile = "/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-119320150410GRIZY.fits", withMags=True, withExt=True,
                  withG=True, withR=True, withI=True, withZ=True, withY=True, doMagColors=True, magCut=None, withDepth=True,
-                 withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True,
-                 withExpMag=True, withFracDev=True, noParent=True, iBandCut=True, sameBandCut=False, starDiff=1.0, galDiff=2.0):
+                 withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True, withExpMag=True, withFracDev=True,
+                 withPsfShape=True, noParent=True, iBandCut=True, sameBandCut=False, starDiff=1.0, galDiff=2.0):
     if (not withMags) and (not withExt):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
@@ -252,7 +268,7 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
     nBands = len(bands)
     nFeatures = nBands*(int(withMags) + int(withExt) + int(withDepth) + int(withSeeing) +\
                         2*int(withDevShape) +2*int(withExpShape) + int(withDevMag) +\
-                        int(withExpMag) + int(withFracDev))
+                        int(withExpMag) + int(withFracDev) + 2*int(withPsfShape))
     featCount = 0
     if withMags:
         magOffset=0
@@ -281,6 +297,9 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
     if withFracDev:
         fracDevOffset = featCount*nBands
         featCount += 1
+    if withPsfShape:
+        psfShapeOffset = featCount*nBands
+        featCount += 2
 
     assert nBands*featCount == nFeatures
    
@@ -328,6 +347,12 @@ def _loadDataHSC(inputFile = "sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fit
             fracDev = cat.get('cmodel.fracDev.'+b)
             good = np.logical_and(good, np.isfinite(fracDev))
             X[:, fracDevOffset+i] = fracDev
+        if withPsfShape:
+            q, hlr = getPsfShape(cat, b, 'sdss')
+            good = np.logical_and(good, np.isfinite(q))
+            good = np.logical_and(good, np.isfinite(hlr))
+            X[:, psfShapeOffset+i] = q
+            X[:, psfShapeOffset+nBands+i] = hlr
 
     if magCut != None:
         mag, ex, snr, good = getMags(cat, 'i', good=good)
@@ -662,7 +687,7 @@ def plotDecBdy(clf, mags, X=None, fig=None, Y=None, withScatter=False, linestyle
     return fig
 
 def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[1.0, 10.0, 100.0]},
-             magCut=None, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
+             magCut=None, inputFile = '/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-119320150410GRIZY.fits', catType='hsc', n_jobs=4,
              seed=0, cols=None, makePlots=None, doMagColors=False, samePop=True, galSub=False, galFrac=0.1, equalNumbers=True, 
              withCV=True, clfKargs={'C': 10.0}, X=None, Y=None, fig=None, compareToExtCut=False, linestyle='--', 
              skipBands=[], **kargs):
@@ -723,7 +748,8 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
         X_train = (Xsub - trainMean)/trainStd; Y_train = Y
         clf.fit(X_train, Y_train)
         if clfType == 'logit' or clfType == 'linearsvc':
-            print "coeffs*std= {0:.2f} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} & {5:.2f} & {6:.2f} & {7:.2f} & {8:.2f} & {9:.2f} & {10:.2f}".format(*tuple(clf.coef_[0]))
+            print "coeffs*std= {0:.2f} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} & {5:.2f} & {6:.2f} & {7:.2f} & {8:.2f} & {9:.2f} & {10:.2f} & {11:.2f} & {12:.2f}".format(*tuple(clf.coef_[0]))
+            #print "coeffs*std= {0:.2f} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} & {5:.2f} & {6:.2f} & {7:.2f} & {8:.2f} & {9:.2f} & {10:.2f}".format(*tuple(clf.coef_[0]))
             coeffs = clf.coef_/trainStd
             coeffs = coeffs[0]
             intercept = clf.intercept_ - np.sum(clf.coef_*trainMean/trainStd)
@@ -754,7 +780,7 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
     return fig, X, Y
 
 def run(doMagColors=False, clfType='logit', param_grid={'C':[0.1, 1.0, 10.0]},
-        magCut=None, doProb=False, inputFile = 'sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits', catType='hsc', n_jobs=4,
+        magCut=None, doProb=False, inputFile = '/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-119320150411GRIZY.fits', catType='hsc', n_jobs=4,
         probFit=False, probFile='prob.pkl', cols=None, **kargs):
     X, Y = loadData(catType=catType, inputFile=inputFile, doMagColors=doMagColors, magCut=magCut, **kargs)
     if cols is not None:
