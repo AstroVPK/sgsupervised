@@ -754,3 +754,87 @@ def fitBandsSingleExp(bands=['g', 'r', 'i', 'z', 'y'], **kargs):
         inputFile = '/u/garmilla/Data/HSC/sgClassCosmosSrcHsc-121120150413{0}.fits'.format(b.upper())
         sgsvm.fitBands(bands=[b], inputFile=inputFile, samePop=False, iBandCut=False, sameBandCut=True, galDiff=10.0, starDiff=10.0, 
                        **kargs)
+
+def plotPred(mags, Y, Ypred, magLim=(18.0, 27.0), magWidth=1.0, nMag=100, title=None, band='r', xlabel=None):
+
+    magCuts = np.linspace(magLim[0], magLim[1], num=nMag)
+    starCompleteness = np.zeros(magCuts.shape)
+    starPurity = np.zeros(magCuts.shape)
+    galCompleteness = np.zeros(magCuts.shape)
+    galPurity = np.zeros(magCuts.shape)
+
+    for i, magCut in enumerate(magCuts):
+        cut = np.logical_and(mags > magCut-magWidth/2, mags < magCut + magWidth/2)
+        Ycut = Y[cut]; YpredCut = Ypred[cut]
+        good = Ycut == YpredCut
+        goodStar = np.logical_and(good, Ycut)
+        goodGal = np.logical_and(good, np.logical_not(Ycut))
+        goodStarPred = np.logical_and(good, YpredCut)
+        goodGalPred = np.logical_and(good, np.logical_not(YpredCut))
+        nStar = np.sum(Ycut); nGal = len(Ycut) - nStar
+        nStarPred = np.sum(YpredCut); nGalPred = len(YpredCut) - nStarPred
+        if nStar > 0:
+            starCompleteness[i] = 1.0*np.sum(goodStar)/nStar
+        else:
+            starCompleteness[i] = 0.0
+        if nStarPred > 0:
+            starPurity[i] = 1.0*np.sum(goodStar)/nStarPred
+        else:
+            starPurity[i] = 0.0
+        if nGal > 0:
+            galCompleteness[i] = 1.0*np.sum(goodGal)/nGal
+        else:
+            galCompleteness[i] = 0.0
+        if nGalPred > 0:
+            galPurity[i] = 1.0*np.sum(goodGal)/nGalPred
+        else:
+            galPurity[i] = 0.0
+
+    fig = plt.figure()
+    axGal = plt.subplot(1, 2, 1)
+    axStar = plt.subplot(1, 2, 2)
+    if title is not None:
+        axGal.set_title(title + " (Galaxies)", fontsize=18)
+        axStar.set_title(title + " (Stars)", fontsize=18)
+    else:
+        axGal.set_title("Galaxies", fontsize=18)
+        axStar.set_title("Stars", fontsize=18)
+    if xlabel is None:
+        axStar.set_xlabel("Magnitude", fontsize=18)
+        axGal.set_xlabel("Magnitude", fontsize=18)
+    else:
+        axStar.set_xlabel(xlabel, fontsize=18)
+        axGal.set_xlabel(xlabel, fontsize=18)
+
+    axStar.set_ylabel("Scores", fontsize=18)
+    axGal.set_ylabel("Scores", fontsize=18)
+    axStar.set_ylim(0.0, 1.0)
+    axGal.set_ylim(0.0, 1.0)
+    for ax in [axStar, axGal]:
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(18)
+
+    axStar.plot(magCuts, starCompleteness, 'r', label='Completeness')
+    axStar.plot(magCuts, starPurity, 'b', label='Purity')
+    axGal.plot(magCuts, galCompleteness, 'r', label='Completeness')
+    axGal.plot(magCuts, galPurity, 'b', label='Purity')
+
+    axStar.legend(loc='lower left', fontsize=18)
+    axGal.legend(loc='lower left', fontsize=18)
+
+    return fig
+
+def makeRegaussPred(cat, band):
+    mag = -2.5*np.log10(cat.get('cmodel.flux.'+band)/cat.get('flux.zeromag.'+band))
+    Y = cat.get('stellar')
+    res = cat.get('shape.hsm.regauss.resolution.' + band)
+    resFlag = cat.get('shape.hsm.regauss.flags.' + band)
+    zeroOut = np.logical_and(resFlag, np.isnan(res))
+    res[zeroOut] = 0.0
+    good = np.logical_and(np.isfinite(mag), np.isfinite(res))
+    mag = mag[good]; Y = Y[good]; res = res[good]
+    Ypred = np.zeros(Y.shape, dtype=bool)
+    Ypred = res < 1.0/3
+    return mag, Y, Ypred

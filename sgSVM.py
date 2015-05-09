@@ -243,7 +243,7 @@ def loadData(catType='hsc', **kargs):
 def _loadDataHSC(inputFile = "/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-119320150410GRIZY.fits", withMags=True, withExt=True,
                  withG=True, withR=True, withI=True, withZ=True, withY=True, doMagColors=True, magCut=None, withDepth=True,
                  withSeeing=True, withDevShape=True, withExpShape=True, withDevMag=True, withExpMag=True, withFracDev=True,
-                 withPsfShape=True, noParent=True, iBandCut=True, sameBandCut=False, starDiff=1.0, galDiff=2.0):
+                 withPsfShape=True, withResolution=True, noParent=True, iBandCut=True, sameBandCut=False, starDiff=1.0, galDiff=2.0):
     if (not withMags) and (not withExt):
         raise ValueError("I need to use either shapes or magnitudes to train")
     if (not withMags) and (doMagColors):
@@ -270,7 +270,7 @@ def _loadDataHSC(inputFile = "/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-
     nBands = len(bands)
     nFeatures = nBands*(int(withMags) + int(withExt) + int(withDepth) + int(withSeeing) +\
                         2*int(withDevShape) +2*int(withExpShape) + int(withDevMag) +\
-                        int(withExpMag) + int(withFracDev) + 2*int(withPsfShape))
+                        int(withExpMag) + int(withFracDev) + 2*int(withPsfShape) + int(withResolution))
     featCount = 0
     if withMags:
         magOffset=0
@@ -302,6 +302,9 @@ def _loadDataHSC(inputFile = "/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-
     if withPsfShape:
         psfShapeOffset = featCount*nBands
         featCount += 2
+    if withResolution:
+        resolutionOffset = featCount*nBands
+        featCount += 1
 
     assert nBands*featCount == nFeatures
    
@@ -355,6 +358,13 @@ def _loadDataHSC(inputFile = "/u/garmilla/Data/HSC/sgClassCosmosDeepCoaddSrcHsc-
             good = np.logical_and(good, np.isfinite(hlr))
             X[:, psfShapeOffset+i] = q
             X[:, psfShapeOffset+nBands+i] = hlr
+        if withResolution:
+            res = cat.get('shape.hsm.regauss.resolution.'+b)
+            resFlag = cat.get('shape.hsm.regauss.flags.'+b)
+            zeroOut = np.logical_and(resFlag, np.isnan(res))
+            res[zeroOut] = 0.0
+            good = np.logical_and(good, np.isfinite(res))
+            X[:, resolutionOffset+i] = res
 
     if magCut != None:
         mag, ex, snr, good = getMags(cat, 'i', good=good)
@@ -750,8 +760,9 @@ def fitBands(bands=['g', 'r', 'i', 'z', 'y'], clfType='logit', param_grid={'C':[
         X_train = (Xsub - trainMean)/trainStd; Y_train = Y
         clf.fit(X_train, Y_train)
         if clfType == 'logit' or clfType == 'linearsvc':
-            print "coeffs*std= {0:.2f} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} & {5:.2f} & {6:.2f} & {7:.2f} & {8:.2f} & {9:.2f} & {10:.2f} & {11:.2f} & {12:.2f}".format(*tuple(clf.coef_[0]))
+            #print "coeffs*std= {0:.2f} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} & {5:.2f} & {6:.2f} & {7:.2f} & {8:.2f} & {9:.2f} & {10:.2f} & {11:.2f} & {12:.2f} & {13:.2f}".format(*tuple(clf.coef_[0]))
             #print "coeffs*std= {0:.2f} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} & {5:.2f} & {6:.2f} & {7:.2f} & {8:.2f} & {9:.2f} & {10:.2f}".format(*tuple(clf.coef_[0]))
+            print "coeffs*std", clf.coef_[0]
             coeffs = clf.coef_/trainStd
             coeffs = coeffs[0]
             intercept = clf.intercept_ - np.sum(clf.coef_*trainMean/trainStd)
