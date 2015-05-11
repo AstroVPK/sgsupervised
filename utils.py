@@ -838,3 +838,38 @@ def makeRegaussPred(cat, band):
     Ypred = np.zeros(Y.shape, dtype=bool)
     Ypred = res < 1.0/3
     return mag, Y, Ypred
+
+def plotCMag(cat, fontSize=18):
+    cat = afwTable.SourceCatalog.readFits(cat)
+    magR = -2.5*np.log10(cat.get('cmodel.flux.r')/cat.get('flux.zeromag.r'))
+    magG = -2.5*np.log10(cat.get('cmodel.flux.g')/cat.get('flux.zeromag.g'))
+    extR = -2.5*np.log10(cat.get('flux.psf.r')/cat.get('cmodel.flux.r'))
+    extG = -2.5*np.log10(cat.get('flux.psf.g')/cat.get('cmodel.flux.g'))
+    stellar = cat.get('stellar')
+    good = np.logical_and(np.isfinite(magR), np.isfinite(magG))
+    good = np.logical_and(good, stellar)
+    good = np.logical_and(good, extG < 5.0)
+    good = np.logical_and(good, extR < 5.0)
+    data = np.vstack((magG[good]-magR[good], magR[good]))
+    from scipy.stats import gaussian_kde
+    kde = gaussian_kde(data)
+    x = np.linspace(-1.0, 3.0, num=100)
+    y = np.linspace(18.0, 27.0, num=100)
+    X, Y = np.meshgrid(x, y)
+    points = np.vstack((X.flatten(), Y.flatten()))
+    Z = kde(points); Z = Z.reshape((100, 100))
+    fig = plt.figure()
+    plt.scatter(magG[good]-magR[good], magR[good], marker='.', s=1, color='black')
+    plt.contour(X, Y, Z)
+    ax = fig.get_axes()[0]
+    for tick in ax.xaxis.get_major_ticks():
+        tick.label.set_fontsize(fontSize)
+    for tick in ax.yaxis.get_major_ticks():
+        tick.label.set_fontsize(fontSize)
+    ax.set_xlabel('g-r', fontsize=fontSize)
+    ax.set_ylabel('r', fontsize=fontSize)
+    ax.set_title('Point Sources in COSMOS', fontsize=fontSize)
+    ax.set_xlim((-1.0, 2.0))
+    ax.set_ylim((19.0, 27.0))
+    plt.gca().invert_yaxis()
+    return fig
