@@ -5,6 +5,23 @@ import lsst.afw.table as afwTable
 
 import sgSVM as sgsvm
 
+def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
+    flux = cat.get('cmodel.flux.'+band)
+    fluxZero = cat.get('flux.zeromag.'+band)
+    mag = -2.5*np.log10(flux/fluxZero)
+    noMeas = np.logical_not(np.isfinite(mag))
+    magAuto = cat.get('mag.auto')
+    try:
+        stellar = cat.get('stellar')
+    except KeyError:
+        stellar = cat.get('mu.class') == 2
+    goodStar = np.logical_or(noMeas, np.logical_and(good, np.logical_and(stellar, np.logical_and(mag < magAuto + starDiff, mag > magAuto - lOffsetStar - starDiff))))
+    goodGal = np.logical_or(noMeas, np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff, mag > magAuto - lOffsetGal - galDiff))))
+
+    good = np.logical_or(goodStar, goodGal)
+
+    return good
+
 def getGood(cat, band='i', magCut=None, noParent=True, iBandCut=True,
             sameBandCut=False, starDiff=1.0, galDiff=2.0, magAutoShift=0.0):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
@@ -22,7 +39,10 @@ def getGood(cat, band='i', magCut=None, noParent=True, iBandCut=True,
         fluxZeroI = cat.get('flux.zeromag.i')
         magI = -2.5*np.log10(fluxI/fluxZeroI)
         magAuto = cat.get('mag.auto')
-        stellar = cat.get('stellar')
+        try:
+            stellar = cat.get('stellar')
+        except KeyError:
+            stellar = cat.get('mu.class') == 2
         goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
         goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
         good = np.logical_or(goodStar, goodGal)
@@ -161,19 +181,27 @@ def makeExtExtPlot(cat, bands=['g', 'r', 'i', 'z', 'y'], fontSize=14, size=1,
                 count += 1
     return fig
 
-def makeMatchMagPlot(cat, fontSize=18, starDiff=0.25, galDiff=0.6):
+def makeMatchMagPlot(cat, fontSize=18, lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8, band='i',
+                     xlim=(16.5, 29.0), ylim=(16.5, 29.0), maxExt=2.0, minExt=-0.4):
+    """
+    Make MAG_AUTO vs CModel plot to identify problematic matches. Default values are meant for HSC-I.
+    """
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
-    fluxI = cat.get('cmodel.flux.i')
-    fluxPsfI = cat.get('flux.psf.i')
-    fluxZeroI = cat.get('flux.zeromag.i')
+    fluxI = cat.get('cmodel.flux.'+band)
+    fluxPsfI = cat.get('flux.psf.'+band)
+    fluxZeroI = cat.get('flux.zeromag.'+band)
     magI = -2.5*np.log10(fluxI/fluxZeroI)
     extI = -2.5*np.log10(fluxPsfI/fluxI)
     magAuto = cat.get('mag.auto')
-    stellar = cat.get('stellar')
+    try:
+        stellar = cat.get('stellar')
+    except KeyError:
+        stellar = cat.get('mu.class') == 2
     good = np.logical_and(True, np.abs(magI - magAuto) < 10.0)
-    good = np.logical_and(good, extI < 2.0)
+    good = np.logical_and(good, extI < maxExt)
+    good = np.logical_and(good, extI > minExt)
     goodStar = np.logical_and(good, stellar)
     goodGal = np.logical_and(good, np.logical_not(stellar))
     x = np.linspace(15.0, 30.0, num=100)
@@ -184,13 +212,13 @@ def makeMatchMagPlot(cat, fontSize=18, starDiff=0.25, galDiff=0.6):
     axStar = fig.add_subplot(1, 2, 1)
     axStar.set_title('Putative Stars', fontsize=fontSize)
     axStar.set_xlabel('MAG_AUTO F814W', fontsize=fontSize)
-    axStar.set_ylabel('CModel Magnitude HSC-I', fontsize=fontSize)
-    axStar.set_xlim((16.5, 28.0)); axStar.set_ylim((16.5, 28.0))
+    axStar.set_ylabel('CModel Magnitude HSC-{0}'.format(band.upper()), fontsize=fontSize)
+    axStar.set_xlim(xlim); axStar.set_ylim(ylim)
     axGal = fig.add_subplot(1, 2, 2)
     axGal.set_title('Putative Galaxies', fontsize=fontSize)
     axGal.set_xlabel('MAG_AUTO F814W', fontsize=fontSize)
-    axGal.set_ylabel('CModel Magnitude HSC-I', fontsize=fontSize)
-    axGal.set_xlim((16.5, 28.0)); axGal.set_ylim((16.5, 28.0))
+    axGal.set_ylabel('CModel Magnitude HSC-{0}'.format(band.upper()), fontsize=fontSize)
+    axGal.set_xlim(xlim); axGal.set_ylim(ylim)
     
     for ax in [axStar, axGal]:
         for tick in ax.xaxis.get_major_ticks():
@@ -200,16 +228,44 @@ def makeMatchMagPlot(cat, fontSize=18, starDiff=0.25, galDiff=0.6):
 
     scStar = axStar.scatter(magAuto[goodStar], magI[goodStar], marker='.', s=8, c=extI[goodStar], edgecolors='none')
     axStar.plot(x, y+starDiff, linestyle='-', color='black')
-    axStar.plot(x, y-0.1-starDiff, linestyle='-', color='black')
+    axStar.plot(x, y-lOffsetStar-starDiff, linestyle='-', color='black')
     scGal = axGal.scatter(magAuto[goodGal], magI[goodGal], marker='.', s=8, c=extI[goodGal], edgecolors='none')
     axGal.plot(x, y+galDiff, linestyle='-', color='black')
-    axGal.plot(x, y-1.3-galDiff, linestyle='-', color='black')
+    axGal.plot(x, y-lOffsetGal-galDiff, linestyle='-', color='black')
+
 
     cb = fig.colorbar(scGal, cax=cbar_ax, use_gridspec=True)
     cb.ax.tick_params(labelsize=fontSize)
     cb.set_label('Extendedness', fontsize=fontSize)
 
+
     return fig
+
+def makeMatchMagPlotMulti(cat, band='i'):
+   """
+   Wrapper used to keep track of the matching settings.
+   """
+
+   if band == 'g':
+       return makeMatchMagPlot(cat, band='g', lOffsetStar=-3.5, starDiff=3.9, lOffsetGal=-0.8, galDiff=3.7)
+   elif band == 'r':
+       return makeMatchMagPlot(cat, band='r', lOffsetStar=-2.2, starDiff=2.7, lOffsetGal=0.5, galDiff=2.3)
+   elif band == 'i':
+       return makeMatchMagPlot(cat)
+   elif band == 'z':
+       return makeMatchMagPlot(cat, band='z', lOffsetStar=1.0, starDiff=0.0, lOffsetGal=2.5)
+   elif band == 'y':
+       return makeMatchMagPlot(cat, band='y', lOffsetStar=1.4, starDiff=0.0, lOffsetGal=2.5)
+   else:
+       raise ValueError("Band {0} does not exist.")
+    
+def getMatchOutNum(cat):
+    good = dropMatchOutliers(cat, band='g', lOffsetStar=-3.5, starDiff=3.9, lOffsetGal=-0.8, galDiff=3.7)
+    good = dropMatchOutliers(cat, good=good, band='r', lOffsetStar=-2.2, starDiff=2.7, lOffsetGal=0.5, galDiff=2.3)
+    good = dropMatchOutliers(cat, good=good, band='i')
+    good = dropMatchOutliers(cat, good=good, band='z', lOffsetStar=1.0, starDiff=0.0, lOffsetGal=2.5)
+    good = dropMatchOutliers(cat, good=good, band='y', lOffsetStar=1.4, starDiff=0.0, lOffsetGal=2.5)
+    return good
 
 def makeExtSeeingSnrPlot(cat, band, size=1, withLabels=False, fontSize=18):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
