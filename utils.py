@@ -5,6 +5,13 @@ import lsst.afw.table as afwTable
 
 import sgSVM as sgsvm
 
+kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':3.9, 'lOffsetGal':-0.8, 'galDiff':3.7},
+               'r': {'lOffsetStar':-2.2, 'starDiff':2.7, 'lOffsetGal':0.5, 'galDiff':2.3},
+               'i': {'lOffsetStar':0.2, 'starDiff':0.3, 'lOffsetGal':2.0, 'galDiff':0.8},
+               'z': {'lOffsetStar':1.0, 'starDiff':0.0, 'lOffsetGal':2.5, 'galDiff':0.8},
+               'y': {'lOffsetStar':1.4, 'starDiff':0.0, 'lOffsetGal':2.5, 'galDiff':0.8},
+              }
+
 def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
     flux = cat.get('cmodel.flux.'+band)
     fluxZero = cat.get('flux.zeromag.'+band)
@@ -22,8 +29,8 @@ def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, l
 
     return good
 
-def getGood(cat, band='i', magCut=None, noParent=True, iBandCut=True,
-            sameBandCut=False, starDiff=1.0, galDiff=2.0, magAutoShift=0.0):
+def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True,
+            starDiff=1.0, galDiff=2.0, magAutoShift=0.0):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -32,29 +39,8 @@ def getGood(cat, band='i', magCut=None, noParent=True, iBandCut=True,
     ext = -2.5*np.log10(fluxPsf/flux)
     good = np.logical_and(True, ext < 5.0)
     if iBandCut:
-        if band == 'i':
-            fluxI = flux
-        else:
-            fluxI = cat.get('cmodel.flux.i')
-        fluxZeroI = cat.get('flux.zeromag.i')
-        magI = -2.5*np.log10(fluxI/fluxZeroI)
-        magAuto = cat.get('mag.auto')
-        try:
-            stellar = cat.get('stellar')
-        except KeyError:
-            stellar = cat.get('mu.class') == 2
-        goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(magI < magAuto + 0.25, magI > magAuto - 0.1 - 0.25)))
-        goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(magI < magAuto + 0.6, magI > magAuto - 1.3 - 0.6)))
-        good = np.logical_or(goodStar, goodGal)
-    elif sameBandCut:
-        fluxZero = cat.get('flux.zeromag.'+band)
-        mag = -2.5*np.log10(flux/fluxZero)
-        magAuto = cat.get('mag.auto')
-        magAuto += magAutoShift
-        stellar = cat.get('stellar')
-        goodStar = np.logical_and(good,np.logical_and(stellar, np.logical_and(mag < magAuto + starDiff, mag > magAuto - starDiff)))
-        goodGal = np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff, mag > magAuto - galDiff)))
-        good = np.logical_or(goodStar, goodGal)
+        for b in ['g', 'r', 'i', 'z', 'y']:
+            good = dropMatchOutliers(cat, good=good, band=b, **kargOutlier[b])
     if noParent:
         good = np.logical_and(good, cat.get('parent.'+band) == 0)
     if magCut is not None:
@@ -245,19 +231,7 @@ def makeMatchMagPlotMulti(cat, band='i'):
    """
    Wrapper used to keep track of the matching settings.
    """
-
-   if band == 'g':
-       return makeMatchMagPlot(cat, band='g', lOffsetStar=-3.5, starDiff=3.9, lOffsetGal=-0.8, galDiff=3.7)
-   elif band == 'r':
-       return makeMatchMagPlot(cat, band='r', lOffsetStar=-2.2, starDiff=2.7, lOffsetGal=0.5, galDiff=2.3)
-   elif band == 'i':
-       return makeMatchMagPlot(cat)
-   elif band == 'z':
-       return makeMatchMagPlot(cat, band='z', lOffsetStar=1.0, starDiff=0.0, lOffsetGal=2.5)
-   elif band == 'y':
-       return makeMatchMagPlot(cat, band='y', lOffsetStar=1.4, starDiff=0.0, lOffsetGal=2.5)
-   else:
-       raise ValueError("Band {0} does not exist.")
+   return makeMatchMagPlot(cat, band=band, **kargOutlier[band])
     
 def getMatchOutNum(cat):
     good = dropMatchOutliers(cat, band='g', lOffsetStar=-3.5, starDiff=3.9, lOffsetGal=-0.8, galDiff=3.7)
@@ -412,9 +386,9 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
                 tick.label.set_fontsize(fontSize)
     return fig
 
-def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
+def makeMagExPlot(cat, band, size=1, fontSize=14, withLabels=False,
                   xlim=(17.5, 28.0), ylim=(-0.05, 0.5), trueSample=False,
-                  frac=0.1, type='ext', data=None, xType='mag', iBandCut=True):
+                  frac=0.02, type='ext', data=None, xType='mag', kargGood={}):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -422,14 +396,17 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
     if isinstance(band, list) or isinstance(band, tuple):
         bands = band
         nRow, nColumn = _getExtHistLayout(len(band))
-        for i in range(nRow*nColumn):
+        for i in range(min(nRow*nColumn, len(bands))):
             ax = fig.add_subplot(nRow, nColumn, i+1)
             band = bands[i]
             flux = cat.get('cmodel.flux.'+band)
             fluxPsf = cat.get('flux.psf.'+band)
             fluxZero = cat.get('flux.zeromag.'+band)
             if withLabels:
-                stellar = cat.get('stellar')
+                try:
+                    stellar = cat.get('stellar')
+                except KeyError:
+                    stellar = cat.get('mu.class') == 2
             if xType == 'mag':
                 mag = -2.5*np.log10(flux/fluxZero)
             elif xType == 'seeing':
@@ -437,7 +414,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
             else:
                 raise ValueError("I don't recognize the xType value")
             ext = -2.5*np.log10(fluxPsf/flux)
-            good = getGood(cat, band, iBandCut=iBandCut)
+            good = getGood(cat, band, **kargGood)
             if data is None:
                 if type == 'ext':
                     data = ext
@@ -486,10 +463,13 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
     fluxPsf = cat.get('flux.psf.'+band)
     fluxZero = cat.get('flux.zeromag.'+band)
     if withLabels:
-        stellar = cat.get('stellar')
+        try:
+            stellar = cat.get('stellar')
+        except KeyError:
+            stellar = cat.get('mu.class') == 2
     mag = -2.5*np.log10(flux/fluxZero)
     ext = -2.5*np.log10(fluxPsf/flux)
-    good = getGood(cat, band, iBandCut=iBandCut)
+    good = getGood(cat, band, **kargGood)
     if data is None:
         if type == 'ext':
             data = ext
@@ -539,7 +519,7 @@ def _getExtHistLayout(nCuts):
     elif nCuts == 4:
         return 2, 2
     elif nCuts == 5:
-        return 2, 3
+        return 3, 2
     else:
         raise ValueError("Using more than 5 cuts is not implemented")
 
