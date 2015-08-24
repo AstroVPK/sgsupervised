@@ -10,8 +10,24 @@ kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':3.9, 'lOffsetGal':-0.8, 'gal
                'y': {'lOffsetStar':1.4, 'starDiff':0.0, 'lOffsetGal':2.5, 'galDiff':0.8},
               }
 
-def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True,
-            starDiff=1.0, galDiff=2.0, magAutoShift=0.0):
+def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
+    flux = cat.get('cmodel.flux.'+band)
+    fluxZero = cat.get('flux.zeromag.'+band)
+    mag = -2.5*np.log10(flux/fluxZero)
+    noMeas = np.logical_not(np.isfinite(mag))
+    magAuto = cat.get('mag.auto')
+    try:
+        stellar = cat.get('stellar')
+    except KeyError:
+        stellar = cat.get('mu.class') == 2
+    goodStar = np.logical_or(noMeas, np.logical_and(good, np.logical_and(stellar, np.logical_and(mag < magAuto + starDiff, mag > magAuto - lOffsetStar - starDiff))))
+    goodGal = np.logical_or(noMeas, np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff, mag > magAuto - lOffsetGal - galDiff))))
+
+    good = np.logical_or(goodStar, goodGal)
+
+    return good
+
+def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -20,8 +36,7 @@ def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True,
     ext = -2.5*np.log10(fluxPsf/flux)
     good = np.logical_and(True, ext < 5.0)
     if iBandCut:
-        for b in ['g', 'r', 'i', 'z', 'y']:
-            good = dropMatchOutliers(cat, good=good, band=b, **kargOutlier[b])
+        good = dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band])
     if noParent:
         good = np.logical_and(good, cat.get('parent.'+band) == 0)
     if magCut is not None:
@@ -144,24 +159,69 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
             for j, inputName in enumerate(inputs):
                 X[:, i*nBands + j] = getInput(cat, inputName=inputName, band=band)
         Y = getOutput(cat, outputName=output)
-    if onlyFinite:
+    if concatBands:
+        good = np.ones((nRecords*len(bands),), dtype=bool)
+    else:
         good = True
+    for i, band in enumerate(bands):
+        if concatBands:
+            good[i*nRecords:(i+1)*nRecords] = np.logical_and(good[i*nRecords:(i+1)*nRecords], getGood(cat, band=band))
+        else:
+            good = np.logical_and(good, getGood(cat, band=band))
+    if onlyFinite:
         for i in range(X.shape[1]):
             good = np.logical_and(good, np.isfinite(X[:,i]))
-        X = X[good]; Y = Y[good]
+    X = X[good]; Y = Y[good]
     return X, Y
 
 class TrainingSet(object):
 
-    def __init__(X, Y, testFrac=0.2):
+    def __init__(self, X, Y, testFrac=0.2):
         self.X = X
         self.Y = Y
+        self.nTotal = len(X)
+        self.nTest = int(testFrac*self.nTotal)
+        self.nTrain = self.nTotal - self.nTest
+        self.selectTrainTest()
 
-def transformXY(X, Y):
-    """
-    Standardizes the data to zero mean unit variance columns.
-    """
-    Xmean = np.mean(X, axis=0)
-    Xstd = np.std(X, axis=0)
+    def selectTrainTest(self, randomState=None):
+        prng = np.random.RandomState()
+        if randomState is None:
+            self.randomState = prng.get_state()
+        else:
+            prng.set_state(randomState)
+            self.randomState = randomState
+        indexes = prng.choice(self.nTotal, self.nTotal, replace=False)
+        self.trainIndexes = (indexes[:self.nTrain],)
+        self.testIndexes = (indexes[self.nTrain:self.nTotal],)
+        self._computeTransforms()
 
-    Xtransform = (X[good] - Xmean
+    def _computeTransforms(self):
+        self.XmeanPre = np.mean(self.X[self.trainIndexes], axis=0)
+        self.XstdPre = np.std(self.X[self.trainIndexes], axis=0)
+        self.XmeanPost = np.mean(self.X, axis=0)
+        self.XstdPost = np.std(self.X, axis=0)
+
+    def getPreTestTrainingSet(self, standardized=True):
+        if standardized:
+            return (self.X[self.trainIndexes] - self.XmeanPre)/self.XstdPre, self.Y[self.trainIndexes]
+        else:
+            return self.X[self.trainIndexes], self.Y[self.trainIndexes]
+
+    def getTestSet(self, standardized=True):
+        if standardized:
+            return (self.X[self.testIndexes] - self.XmeanPre)/self.XstdPre, self.Y[self.testIndexes]
+        else:
+            return self.X[self.testIndexes], self.Y[self.testIndexes]
+
+    def getPostTestTrainingSet(self, standardized=True):
+        if standardized:
+            return (self.X - self.XmeanPost)/self.XstdPost, self.Y
+        else:
+            return self.X, self.Y
+
+    def applyPreTestTransform(self, X):
+        return (X - self.XmeanPre)/self.XstdPre
+
+    def applyPostTestTransform(self, X):
+        return (X - self.XmeanPost)/self.XstdPost
