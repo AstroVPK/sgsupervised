@@ -1,7 +1,10 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 import lsst.afw.table as afwTable
 from lsst.pex.exceptions import LsstCppException
+
+from sklearn.grid_search import GridSearchCV
 
 kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':3.9, 'lOffsetGal':-0.8, 'galDiff':3.7},
                'r': {'lOffsetStar':-2.2, 'starDiff':2.7, 'lOffsetGal':0.5, 'galDiff':2.3},
@@ -148,17 +151,21 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
     if concatBands:
         X = np.zeros((nRecords*len(bands), len(inputs)))
         Y = np.zeros((nRecords*len(bands),), dtype=int)
+        mags = np.zeros((nRecords*len(bands),))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
                 X[i*nRecords:(i+1)*nRecords, j] = getInput(cat, inputName=inputName, band=band)
             Y[i*nRecords:(i+1)*nRecords] = getOutput(cat, outputName=output)
+            mags[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='mag', band=band)
     else:
         X = np.zeros((nRecords, len(inputs)*len(bands)))
         Y = np.zeros((nRecords,), dtype=int)
+        mags = np.zeros((nRecords,))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
                 X[:, i*nBands + j] = getInput(cat, inputName=inputName, band=band)
         Y = getOutput(cat, outputName=output)
+        mags = getOutput(cat, inputName='mag', band=band)
     if concatBands:
         good = np.ones((nRecords*len(bands),), dtype=bool)
     else:
@@ -171,17 +178,18 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
     if onlyFinite:
         for i in range(X.shape[1]):
             good = np.logical_and(good, np.isfinite(X[:,i]))
-    X = X[good]; Y = Y[good]
-    return X, Y
+    X = X[good]; Y = Y[good]; mags = mags[good]
+    return X, Y, mags
 
 class TrainingSet(object):
 
-    def __init__(self, X, Y, testFrac=0.2):
+    def __init__(self, X, Y, mags, testFrac=0.2):
         self.X = X
         self.Y = Y
         self.nTotal = len(X)
         self.nTest = int(testFrac*self.nTotal)
         self.nTrain = self.nTotal - self.nTest
+        self.mags = mags
         self.selectTrainTest()
 
     def selectTrainTest(self, randomState=None):
@@ -225,3 +233,74 @@ class TrainingSet(object):
 
     def applyPostTestTransform(self, X):
         return (X - self.XmeanPost)/self.XstdPost
+
+class Training(object):
+
+    def __init__(self, trainingSet, clf, preFit=True):
+        self.trainingSet = trainingSet
+        self.clf = clf
+        self.preFit = preFit
+
+    def predictTrainLabels(self):
+        X = self.trainingSet.getPreTestTrainingSet()[0]
+        return self.clf.predict(X)
+
+    def predictTestLabels(self):
+        X = self.trainingSet.getTestSet()[0]
+        return self.clf.predict(X)
+
+    def printPhysicalFit(self):
+        if isinstance(self.clf, GridSearchCV):
+            estimator = self.clf.best_estimator_
+        else:
+            estimator = self.clf
+
+        if self.preFit:
+            coeff = estimator.coef_[0]/self.trainingSet.XstdPre
+            intercept = estimator.intercept_ -\
+                        np.sum(estimator.coef_*self.trainingSet.XmeanPre/self.trainingSet.XstdPre)
+            print "coeff:", coeff/coeff[0]
+            print "intercept:", intercept/coeff[0]
+        else:
+            print "coeff:", estimator.coef_/self.trainingSet.XstdPost/estimator.coef_[0][0]
+            print "intercept:", estimator.intercept_ -\
+                                np.sum(estimator.coef_*self.trainingSet.XmeanPost/self.trainingSet.XstdPost)/\
+                                estimator.coef_[0][0]
+
+    def plotTestScores(self, nBins=50):
+        testMags = self.trainingSet.mags[self.trainingSet.testIndexes]
+        magsBins = np.linspace(testMags.min(), testMags.max(), num=nBins+1)
+        magsCenters = 0.5*(magsBins[:-1] + magsBins[1:])
+        complStars = np.zeros(magsCenters.shape)
+        purityStars = np.zeros(magsCenters.shape)
+        complGals = np.zeros(magsCenters.shape)
+        purityGals = np.zeros(magsCenters.shape)
+        pred = self.predictTestLabels()
+        truth = self.trainingSet.getTestSet()[1]
+
+        for i in range(nBins):
+            magCut = np.logical_and(testMags > magsBins[i], testMags < magsBins[i+1])
+            predCut = pred[magCut]; truthCut = truth[magCut]
+            goodStars = np.logical_and(predCut, truthCut)
+            goodGals = np.logical_and(np.logical_not(predCut), np.logical_not(truthCut))
+            if np.sum(truthCut) > 0:
+                complStars[i] = float(np.sum(goodStars))/np.sum(truthCut)
+            if np.sum(predCut) > 0:
+                purityStars[i] = float(np.sum(goodStars))/np.sum(predCut)
+            if len(truthCut) - np.sum(truthCut) > 0:
+                complGals[i] = float(np.sum(goodGals))/(len(truthCut) - np.sum(truthCut))
+            if len(predCut) - np.sum(predCut) > 0:
+                purityGals[i] = float(np.sum(goodGals))/(len(predCut) - np.sum(predCut))
+
+        fig = plt.figure()
+        axGal = fig.add_subplot(1, 2, 1)
+        axStar = fig.add_subplot(1, 2, 2)
+        axGal.set_ylim((0.5, 1.0))
+        axStar.set_ylim((0.5, 1.0))
+
+        axGal.step(magsCenters, complGals, color='red')
+        axGal.step(magsCenters, purityGals, color='blue')
+        axStar.step(magsCenters, complStars, color='red')
+        axStar.step(magsCenters, purityStars, color='blue')
+
+        return fig
