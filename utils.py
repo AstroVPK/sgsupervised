@@ -442,8 +442,8 @@ def makeMagExPlot(cat, band, size=1, fontSize=14, withLabels=False,
                         elif gals[i]:
                             ax.plot(mag[i], data[i], marker='.', markersize=size, color='red')
                 else:
-                    ax.scatter(mag[stars], data[stars], marker='.', s=size, color='blue', label='Stars')
                     ax.scatter(mag[gals], data[gals], marker='.', s=size, color='red', label='Galaxies')
+                    ax.scatter(mag[stars], data[stars], marker='.', s=size, color='blue', label='Stars')
             else:
                 if trueSample:
                     for i in range(int(frac*len(mag))):
@@ -496,8 +496,8 @@ def makeMagExPlot(cat, band, size=1, fontSize=14, withLabels=False,
                 else:
                     plt.plot(mag[i], data[i], marker='.', markersize=size, color='red')
         else:
-            plt.scatter(mag[stars], data[stars], marker='.', s=size, color='blue', label='Stars')
             plt.scatter(mag[gals], data[gals], marker='.', s=size, color='red', label='Galaxies')
+            plt.scatter(mag[stars], data[stars], marker='.', s=size, color='blue', label='Stars')
     else:
         plt.scatter(mag[good], data[good], marker='.', s=size)
     ax = fig.get_axes()[0]
@@ -530,7 +530,7 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
     if magCuts is None:
-        magCuts = [(23.0, 24.0)]
+        magCuts = [(18.0, 26.0)]
     elif not isinstance(magCuts, list):
         assert isinstance(magCuts, tuple)
         assert len(magCuts) == 2
@@ -541,7 +541,10 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
     fluxPsf = cat.get('flux.psf.'+band)
     fluxZero = cat.get('flux.zeromag.'+band)
     if withLabels:
-        stellar = cat.get('stellar')
+        try:
+            stellar = cat.get('stellar')
+        except KeyError:
+            stellar = cat.get('mu.class') == 2
     mag = -2.5*np.log10(flux/fluxZero)
     ext = -2.5*np.log10(fluxPsf/flux)
     fluxI = cat.get('cmodel.flux.i')
