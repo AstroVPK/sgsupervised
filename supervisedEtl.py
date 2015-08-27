@@ -150,7 +150,7 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
     nRecords = len(cat); nBands = len(bands)
     if concatBands:
         X = np.zeros((nRecords*len(bands), len(inputs)))
-        Y = np.zeros((nRecords*len(bands),), dtype=int)
+        Y = np.zeros((nRecords*len(bands),), dtype=bool)
         mags = np.zeros((nRecords*len(bands),))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
@@ -159,7 +159,7 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
             mags[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='mag', band=band)
     else:
         X = np.zeros((nRecords, len(inputs)*len(bands)))
-        Y = np.zeros((nRecords,), dtype=int)
+        Y = np.zeros((nRecords,), dtype=bool)
         mags = np.zeros((nRecords,))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
@@ -205,34 +205,45 @@ class TrainingSet(object):
         self._computeTransforms()
 
     def _computeTransforms(self):
-        self.XmeanPre = np.mean(self.X[self.trainIndexes], axis=0)
-        self.XstdPre = np.std(self.X[self.trainIndexes], axis=0)
-        self.XmeanPost = np.mean(self.X, axis=0)
-        self.XstdPost = np.std(self.X, axis=0)
+        self.XmeanTrain = np.mean(self.X[self.trainIndexes], axis=0)
+        self.XstdTrain = np.std(self.X[self.trainIndexes], axis=0)
+        self.XmeanTest = np.mean(self.X[self.testIndexes], axis=0)
+        self.XstdTest = np.std(self.X[self.testIndexes], axis=0)
+        self.XmeanAll = np.mean(self.X, axis=0)
+        self.XstdAll = np.std(self.X, axis=0)
 
-    def getPreTestTrainingSet(self, standardized=True):
+    def getTrainSet(self, standardized=True):
         if standardized:
-            return (self.X[self.trainIndexes] - self.XmeanPre)/self.XstdPre, self.Y[self.trainIndexes]
+            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
         else:
             return self.X[self.trainIndexes], self.Y[self.trainIndexes]
 
     def getTestSet(self, standardized=True):
         if standardized:
-            return (self.X[self.testIndexes] - self.XmeanPre)/self.XstdPre, self.Y[self.testIndexes]
+            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
         else:
             return self.X[self.testIndexes], self.Y[self.testIndexes]
 
-    def getPostTestTrainingSet(self, standardized=True):
+    def getAllSet(self, standardized=True):
         if standardized:
-            return (self.X - self.XmeanPost)/self.XstdPost, self.Y
+            return (self.X - self.XmeanAll)/self.XstdAll, self.Y
         else:
             return self.X, self.Y
 
     def applyPreTestTransform(self, X):
-        return (X - self.XmeanPre)/self.XstdPre
+        return (X - self.XmeanTrain)/self.XstdTrain
 
     def applyPostTestTransform(self, X):
-        return (X - self.XmeanPost)/self.XstdPost
+        return (X - self.XmeanAll)/self.XstdAll
+
+    def plotLabeledHist(self, idx, physical=True, nBins=100):
+        hist, bins = np.histogram(self.X[:,idx], bins=nBins)
+        dataStars = self.X[:,idx][self.Y]
+        dataGals = self.X[:,idx][np.logical_not(self.Y)]
+        fig = plt.figure()
+        plt.hist(dataStars, bins=bins, histtype='step', color='blue', label='Stars')
+        plt.hist(dataGals, bins=bins, histtype='step', color='red', label='Galaxies')
+        return fig
 
 class Training(object):
 
@@ -242,11 +253,15 @@ class Training(object):
         self.preFit = preFit
 
     def predictTrainLabels(self):
-        X = self.trainingSet.getPreTestTrainingSet()[0]
+        X = self.trainingSet.getTrainSet()[0]
         return self.clf.predict(X)
 
     def predictTestLabels(self):
         X = self.trainingSet.getTestSet()[0]
+        return self.clf.predict(X)
+
+    def predictAllLabels(self):
+        X = self.trainingSet.getAllSet()[0]
         return self.clf.predict(X)
 
     def printPhysicalFit(self):
@@ -256,30 +271,48 @@ class Training(object):
             estimator = self.clf
 
         if self.preFit:
-            coeff = estimator.coef_[0]/self.trainingSet.XstdPre
+            coeff = estimator.coef_[0]/self.trainingSet.XstdTrain
             intercept = estimator.intercept_ -\
-                        np.sum(estimator.coef_*self.trainingSet.XmeanPre/self.trainingSet.XstdPre)
-            print "coeff:", coeff/coeff[0]
-            print "intercept:", intercept/coeff[0]
+                        np.sum(estimator.coef_[0]*self.trainingSet.XmeanTrain/self.trainingSet.XstdTrain)
+            print "coeff:", coeff/coeff[0]*np.sign(coeff[0])
+            print "intercept:", intercept/coeff[0]*np.sign(coeff[0])
         else:
-            print "coeff:", estimator.coef_/self.trainingSet.XstdPost/estimator.coef_[0][0]
+            print "coeff:", estimator.coef_/self.trainingSet.XstdAll/estimator.coef_[0][0]
             print "intercept:", estimator.intercept_ -\
-                                np.sum(estimator.coef_*self.trainingSet.XmeanPost/self.trainingSet.XstdPost)/\
+                                np.sum(estimator.coef_[0]*self.trainingSet.XmeanAll/self.trainingSet.XstdAll)/\
                                 estimator.coef_[0][0]
 
-    def plotTestScores(self, nBins=50):
-        testMags = self.trainingSet.mags[self.trainingSet.testIndexes]
-        magsBins = np.linspace(testMags.min(), testMags.max(), num=nBins+1)
+    def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-',
+                   magRange=None, xlabel='Magnitude', ylabel='Scores'):
+        if sType == 'test':
+            mags = self.trainingSet.mags[self.trainingSet.testIndexes]
+        elif sType == 'train':
+            mags = self.trainingSet.mags[self.trainingSet.trainIndexes]
+        elif sType == 'all':
+            mags = self.trainingSet.mags
+        else:
+            raise ValueError("Scores of type {0} are not implemented".format(sType))
+        
+        if magRange is None:
+            magsBins = np.linspace(mags.min(), mags.max(), num=nBins+1)
+        else:
+            magsBins = np.linspace(magRange[0], magRange[1], num=nBins+1)
         magsCenters = 0.5*(magsBins[:-1] + magsBins[1:])
         complStars = np.zeros(magsCenters.shape)
         purityStars = np.zeros(magsCenters.shape)
         complGals = np.zeros(magsCenters.shape)
         purityGals = np.zeros(magsCenters.shape)
-        pred = self.predictTestLabels()
-        truth = self.trainingSet.getTestSet()[1]
-
+        if sType == 'test':
+            pred = self.predictTestLabels()
+            truth = self.trainingSet.getTestSet()[1]
+        elif sType == 'train':
+            pred = self.predictTrainLabels()
+            truth = self.trainingSet.getTrainSet()[1]
+        elif sType == 'all':
+            pred = self.predictAllLabels()
+            truth = self.trainingSet.getAllSet()[1]
         for i in range(nBins):
-            magCut = np.logical_and(testMags > magsBins[i], testMags < magsBins[i+1])
+            magCut = np.logical_and(mags > magsBins[i], mags < magsBins[i+1])
             predCut = pred[magCut]; truthCut = truth[magCut]
             goodStars = np.logical_and(predCut, truthCut)
             goodGals = np.logical_and(np.logical_not(predCut), np.logical_not(truthCut))
@@ -292,15 +325,47 @@ class Training(object):
             if len(predCut) - np.sum(predCut) > 0:
                 purityGals[i] = float(np.sum(goodGals))/(len(predCut) - np.sum(predCut))
 
-        fig = plt.figure()
-        axGal = fig.add_subplot(1, 2, 1)
-        axStar = fig.add_subplot(1, 2, 2)
-        axGal.set_ylim((0.5, 1.0))
-        axStar.set_ylim((0.5, 1.0))
+        if fig is None:
+            fig = plt.figure()
+            axGal = fig.add_subplot(1, 2, 1)
+            axStar = fig.add_subplot(1, 2, 2)
+            axGal.set_title('Galaxies')
+            axStar.set_title('Stars')
+            axGal.set_xlabel(xlabel)
+            axGal.set_ylabel(ylabel)
+            axStar.set_xlabel(xlabel)
+            axStar.set_ylabel(ylabel)
+            axGal.set_ylim((0.0, 1.0))
+            axStar.set_ylim((0.0, 1.0))
+        else:
+            axGal, axStar = fig.get_axes()
 
-        axGal.step(magsCenters, complGals, color='red')
-        axGal.step(magsCenters, purityGals, color='blue')
-        axStar.step(magsCenters, complStars, color='red')
-        axStar.step(magsCenters, purityStars, color='blue')
+        axGal.step(magsCenters, complGals, color='red', linestyle=linestyle)
+        axGal.step(magsCenters, purityGals, color='blue', linestyle=linestyle)
+        axStar.step(magsCenters, complStars, color='red', linestyle=linestyle)
+        axStar.step(magsCenters, purityStars, color='blue', linestyle=linestyle)
 
         return fig
+
+    def setPhysicalCut(self, cut, tType = 'train'):
+        assert self.trainingSet.X.shape[1] == 1
+
+        if isinstance(self.clf, GridSearchCV):
+            estimator = self.clf.best_estimator_
+        else:
+            estimator = self.clf
+
+        if tType == 'train':
+            estimator.coef_[0][0] = -1.0*self.trainingSet.XstdTrain[0]
+            estimator.intercept_[0] = cut - self.trainingSet.XmeanTrain[0]
+            print "Cut in standardized data is at {0}".format(-estimator.intercept_[0]/estimator.coef_[0][0])
+        elif tType == 'test':
+            estimator.coef_[0][0] = -1.0*self.trainingSet.XstdTest[0]
+            estimator.intercept_[0] = cut - self.trainingSet.XmeanTest[0]
+            print "Cut in standardized data is at {0}".format(-estimator.intercept_[0]/estimator.coef_[0][0])
+        elif tType == 'all':
+            estimator.coef_[0][0] = -1.0*self.trainingSet.XstdAll[0]
+            estimator.intercept_[0] = cut - self.trainingSet.XmeanAll[0]
+            print "Cut in standardized data is at {0}".format(-estimator.intercept_[0]/estimator.coef_[0][0])
+        else:
+            raise ValueError("Transform of type {0} not implemented".format(tType))
