@@ -2,7 +2,7 @@ from sklearn.svm import SVC, LinearSVC
 from sklearn.grid_search import GridSearchCV
 
 def linearFit(trainingSet, n_jobs=4, **estKargs):
-    X, Y = trainingSet.getPreTestTrainingSet()
+    X, Y = trainingSet.getTrainSet()
     estimator = LinearSVC(**estKargs)
     param_grid = {'C':[0.1, 1.0, 10.0]}
     clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
@@ -13,7 +13,7 @@ def linearFit(trainingSet, n_jobs=4, **estKargs):
     return clf
 
 def rbfFit(trainingSet, n_jobs=4):
-    X, Y = trainingSet.getPreTestTrainingSet()
+    X, Y = trainingSet.getTrainSet()
     estimator = SVC()
     param_grid = {'C':[0.1, 1.0, 10.0], 'gamma':[0.1, 1.0, 10.0]}
     clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
