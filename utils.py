@@ -193,7 +193,7 @@ def makeMatchMagPlot(cat, fontSize=18, lOffsetStar=0.2, starDiff=0.3, lOffsetGal
     x = np.linspace(15.0, 30.0, num=100)
     y = np.linspace(15.0, 30.0, num=100)
 
-    fig = plt.figure(figsize=(16, 8))
+    fig = plt.figure(figsize=(16, 8), dpi=120)
     cbar_ax = fig.add_axes([0.91, 0.1, 0.02, 0.8])
     axStar = fig.add_subplot(1, 2, 1)
     axStar.set_title('Putative Stars', fontsize=fontSize)
@@ -224,6 +224,7 @@ def makeMatchMagPlot(cat, fontSize=18, lOffsetStar=0.2, starDiff=0.3, lOffsetGal
     cb.ax.tick_params(labelsize=fontSize)
     cb.set_label('Extendedness', fontsize=fontSize)
 
+    plt.savefig('/u/garmilla/Desktop/cosmosMatchCut{0}.png'.format(band.upper()), dpi=120, bbox_inches='tight')
 
     return fig
 
@@ -386,16 +387,16 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
                 tick.label.set_fontsize(fontSize)
     return fig
 
-def makeMagExPlot(cat, band, size=1, fontSize=14, withLabels=False,
+def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
                   xlim=(17.5, 28.0), ylim=(-0.05, 0.5), trueSample=False,
                   frac=0.02, type='ext', data=None, xType='mag', kargGood={}):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
-    fig = plt.figure()
     if isinstance(band, list) or isinstance(band, tuple):
         bands = band
         nRow, nColumn = _getExtHistLayout(len(band))
+        fig = plt.figure(figsize=(nColumn*8, nRow*6))
         for i in range(min(nRow*nColumn, len(bands))):
             ax = fig.add_subplot(nRow, nColumn, i+1)
             band = bands[i]
@@ -458,7 +459,9 @@ def makeMagExPlot(cat, band, size=1, fontSize=14, withLabels=False,
                 tick.label.set_fontsize(fontSize)
             if withLabels:
                 ax.legend(loc=1, fontsize=18)
+        fig.savefig('/u/garmilla/Desktop/cosmosMatching.png', dpi=120, bbox_inches='tight')
         return fig
+    fig = plt.figure()
     flux = cat.get('cmodel.flux.'+band)
     fluxPsf = cat.get('flux.psf.'+band)
     fluxZero = cat.get('flux.zeromag.'+band)
@@ -507,6 +510,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=14, withLabels=False,
         tick.label.set_fontsize(fontSize)
     if withLabels:
         plt.legend(loc=1, fontsize=18)
+    fig.savefig('/u/garmilla/Desktop/cosmosMatching.png', dpi=120, bbox_inches='tight')
     return fig
 
 def _getExtHistLayout(nCuts):
