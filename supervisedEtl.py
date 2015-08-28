@@ -6,11 +6,11 @@ from lsst.pex.exceptions import LsstCppException
 
 from sklearn.grid_search import GridSearchCV
 
-kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':3.9, 'lOffsetGal':-0.8, 'galDiff':3.7},
-               'r': {'lOffsetStar':-2.2, 'starDiff':2.7, 'lOffsetGal':0.5, 'galDiff':2.3},
-               'i': {'lOffsetStar':0.2, 'starDiff':0.3, 'lOffsetGal':2.0, 'galDiff':0.8},
-               'z': {'lOffsetStar':1.0, 'starDiff':0.0, 'lOffsetGal':2.5, 'galDiff':0.8},
-               'y': {'lOffsetStar':1.4, 'starDiff':0.0, 'lOffsetGal':2.5, 'galDiff':0.8},
+kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-0.8, 'galDiff':3.9},
+               'r': {'lOffsetStar':-2.9, 'starDiff':3.4, 'lOffsetGal':0.5, 'galDiff':2.3},
+               'i': {'lOffsetStar':0.2, 'starDiff':0.5, 'lOffsetGal':1.7, 'galDiff':1.5},
+               'z': {'lOffsetStar':1.0, 'starDiff':0.2, 'lOffsetGal':2.0, 'galDiff':1.4},
+               'y': {'lOffsetStar':1.4, 'starDiff':0.2, 'lOffsetGal':2.6, 'galDiff':1.1},
               }
 
 def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
