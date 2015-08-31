@@ -529,7 +529,7 @@ def _getExtHistLayout(nCuts):
 
 
 def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=False,
-                normed=False, xlim=None, type='ext', data=None):
+                normed=False, xlim=None, type='ext', data=None, noParent=False):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -563,9 +563,9 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             q, data = sgsvm.getShape(cat, band, 'dev')
         else:
             data = cat.get(type + '.' + band)
-    good = getGood(cat, band)
+    good = getGood(cat, band, noParent = noParent)
     good = np.logical_and(good, np.isfinite(data))
-    fig = plt.figure()
+    fig = plt.figure(figsize=(16, 16), dpi=120)
     for i in range(nRow*nColumn):
         magCut = magCuts[i]
         goodCut = np.logical_and(good, magI >= magCut[0])
@@ -599,6 +599,9 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             tick.label.set_fontsize(fontSize)
         if withLabels:
             ax.legend(loc=1, fontsize=fontSize)
+        ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+
+    fig.savefig('/u/garmilla/Desktop/extHistogramsLabeled.eps', dpi=120, bbox_inches='tight')
     return fig
 
 def testClfs(clfList, X, Y, cols=None, magCol=None, fig=None, colList=None, pltKargs=None, magIdx=2, printCoeffs=False):
@@ -915,4 +918,62 @@ def plotCMag(cat, fontSize=18):
     ax.set_xlim((-1.0, 2.0))
     ax.set_ylim((19.0, 27.0))
     plt.gca().invert_yaxis()
+    return fig
+
+def plotExtCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, nBins=50,
+                     fontSize=16, xlabel='CModel Magnitude', ylabel='Scores', linestyles=[':', '-', '--']):
+    magBins = np.linspace(magMin, magMax, num=nBins+1)
+    magCenters = 0.5*(magBins[:-1] + magBins[1:])
+    complStars = np.zeros(magCenters.shape)
+    purityStars = np.zeros(magCenters.shape)
+    complGals = np.zeros(magCenters.shape)
+    purityGals = np.zeros(magCenters.shape)
+    magMeas = -2.5*np.log10(cat.get('cmodel.flux.'+band)/cat.get('flux.zeromag.'+band))
+    ext = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('cmodel.flux.'+band))
+    try:
+        stellar = cat.get('stellar')
+    except KeyError:
+        stellar = cat.get('mu.class') == 2
+    truth = stellar
+    fig = plt.figure(figsize=(16, 8))
+    axGal = fig.add_subplot(1, 2, 1)
+    axStar = fig.add_subplot(1, 2, 2)
+    axGal.set_title('Galaxies', fontsize=fontSize)
+    axStar.set_title('Stars', fontsize=fontSize)
+    axGal.set_xlabel(xlabel, fontsize=fontSize)
+    axGal.set_ylabel(ylabel, fontsize=fontSize)
+    axStar.set_xlabel(xlabel, fontsize=fontSize)
+    axStar.set_ylabel(ylabel, fontsize=fontSize)
+    axGal.set_ylim((0.0, 1.0))
+    axStar.set_ylim((0.0, 1.0))
+    for ax in [axStar, axGal]:
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    for i, cut in enumerate(cuts):
+        pred = np.logical_and(True, ext < cut)
+        linestyle = linestyles[i]
+        for j in range(nBins):
+            magCut = np.logical_and(magMeas > magBins[j], magMeas < magBins[j+1])
+            predCut = pred[magCut]; truthCut = truth[magCut]
+            goodStars = np.logical_and(predCut, truthCut)
+            goodGals = np.logical_and(np.logical_not(predCut), np.logical_not(truthCut))
+            if np.sum(truthCut) > 0:
+                complStars[j] = float(np.sum(goodStars))/np.sum(truthCut)
+            if np.sum(predCut) > 0:
+                purityStars[j] = float(np.sum(goodStars))/np.sum(predCut)
+            if len(truthCut) - np.sum(truthCut) > 0:
+                complGals[j] = float(np.sum(goodGals))/(len(truthCut) - np.sum(truthCut))
+            if len(predCut) - np.sum(predCut) > 0:
+                purityGals[j] = float(np.sum(goodGals))/(len(predCut) - np.sum(predCut))
+
+        axGal.step(magCenters, complGals, color='red', linestyle=linestyle, label='{0} cut completeness'.format(cut))
+        axGal.step(magCenters, purityGals, color='blue', linestyle=linestyle, label='{0} cut purity'.format(cut))
+        axStar.step(magCenters, complStars, color='red', linestyle=linestyle, label='{0} cut completeness'.format(cut))
+        axStar.step(magCenters, purityStars, color='blue', linestyle=linestyle, label='{0} cut purity'.format(cut))
+
+    axGal.legend(loc='lower left', fontsize=fontSize)
+    axStar.legend(loc='lower left', fontsize=fontSize)
+    fig.savefig('/u/garmilla/Desktop/extCutScoresR.eps'.format(band.upper()), dpi=120, bbox_inches='tight')
     return fig
