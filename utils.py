@@ -30,7 +30,7 @@ def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, l
     return good
 
 def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True,
-            starDiff=1.0, galDiff=2.0, magAutoShift=0.0):
+            starDiff=1.0, galDiff=2.0, magAutoShift=0.0, dropNoShape=False):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -46,6 +46,9 @@ def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True,
     if magCut is not None:
         good = np.logical_and(good, magI > magCut[0])
         good = np.logical_and(good, magI < magCut[1])
+    if dropNoShape:
+        noShape = cat.get('cmodel.flags.noShape.'+band)
+        good = np.logical_and(good, np.logical_not(noShape))
     return good
 
 def getExt(cat, band):
@@ -387,7 +390,7 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
                 tick.label.set_fontsize(fontSize)
     return fig
 
-def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
+def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                   xlim=(17.5, 28.0), ylim=(-0.05, 0.5), trueSample=False,
                   frac=0.02, type='ext', data=None, xType='mag', kargGood={}):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
@@ -410,8 +413,13 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
                     stellar = cat.get('mu.class') == 2
             if xType == 'mag':
                 mag = -2.5*np.log10(flux/fluxZero)
+                ax.set_xlabel('CModel Magnitude HSC-'+band.upper(), fontsize=fontSize)
+            elif xType == 'psfMag':
+                mag = -2.5*np.log10(fluxPsf/fluxZero)
+                ax.set_xlabel('PSF Magnitude HSC-'+band.upper(), fontsize=fontSize)
             elif xType == 'seeing':
                 mag = cat.get('seeing.'+band)
+                ax.set_xlabel('Seeing HSC-'+band.upper(), fontsize=fontSize)
             else:
                 raise ValueError("I don't recognize the xType value")
             ext = -2.5*np.log10(fluxPsf/flux)
@@ -419,7 +427,13 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
             if data is None:
                 if type == 'ext':
                     data = ext
-                    ax.set_ylabel('Extendedness HSC-'+band.upper(), fontsize=fontSize)
+                    plt.ylabel('Mag_psf - Mag_cmodel HSC-'+band.upper(), fontsize=fontSize)
+                elif type == 'kron':
+                    data = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('flux.kron.'+band))
+                    plt.ylabel('Mag_psf - Mag_kron HSC-'+band.upper(), fontsize=fontSize)
+                elif type == 'hsm':
+                    q, data = sgsvm.getShape(cat, band, 'hsm')
+                    plt.ylabel('Rdet (HSM) HSC-'+band.upper(), fontsize=fontSize)
                 elif type == 'rexp':
                     q, data = sgsvm.getShape(cat, band, 'exp')
                     ax.set_ylabel('rExp HSC-'+band.upper(), fontsize=fontSize)
@@ -429,10 +443,10 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
                 else:
                     data = cat.get(type + '.' + band)
                     ax.set_ylabel(type + ' HSC-'+band.upper(), fontsize=fontSize)
-            ax.set_xlabel('Magnitude HSC-'+band.upper(), fontsize=fontSize)
             if xlim is not None:
                 ax.set_xlim(xlim)
-            ax.set_ylim(ylim)
+            if ylim is not None:
+                ax.set_ylim(ylim)
             if withLabels:
                 gals = np.logical_and(good, np.logical_not(stellar))
                 stars = np.logical_and(good, stellar)
@@ -473,10 +487,28 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
     mag = -2.5*np.log10(flux/fluxZero)
     ext = -2.5*np.log10(fluxPsf/flux)
     good = getGood(cat, band, **kargGood)
+    if xType == 'mag':
+        mag = -2.5*np.log10(flux/fluxZero)
+        plt.xlabel('CModel Magnitude HSC-'+band.upper(), fontsize=fontSize)
+    elif xType == 'psfMag':
+        mag = -2.5*np.log10(fluxPsf/fluxZero)
+        plt.xlabel('PSF Magnitude HSC-'+band.upper(), fontsize=fontSize)
+    elif xType == 'seeing':
+        mag = cat.get('seeing.'+band)
+        plt.xlabel('Seeing HSC-'+band.upper(), fontsize=fontSize)
+    else:
+        raise ValueError("I don't recognize the xType value")
+
     if data is None:
         if type == 'ext':
             data = ext
-            plt.ylabel('Extendedness HSC-'+band.upper(), fontsize=fontSize)
+            plt.ylabel('Mag_psf - Mag_cmodel HSC-'+band.upper(), fontsize=fontSize)
+        elif type == 'kron':
+            data = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('flux.kron.'+band))
+            plt.ylabel('Mag_psf - Mag_kron HSC-'+band.upper(), fontsize=fontSize)
+        elif type == 'hsm':
+            q, data = sgsvm.getShape(cat, band, 'hsm')
+            plt.ylabel('Rdet (HSM) HSC-'+band.upper(), fontsize=fontSize)
         elif type == 'rexp':
             q, data = sgsvm.getShape(cat, band, 'exp')
             plt.ylabel('rExp HSC-'+band.upper(), fontsize=fontSize)
@@ -486,9 +518,10 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False,
         else:
             data = cat.get(type + '.' + band)
             plt.ylabel(type + ' HSC-'+band.upper(), fontsize=fontSize)
-    plt.xlabel('Magnitude HSC-'+band.upper(), fontsize=fontSize)
-    plt.xlim(xlim)
-    plt.ylim(ylim)
+    if xlim is not None:
+        plt.xlim(xlim)
+    if ylim is not None:
+        plt.ylim(ylim)
     if withLabels:
         gals = np.logical_and(good, np.logical_not(stellar))
         stars = np.logical_and(good, stellar)
@@ -920,8 +953,9 @@ def plotCMag(cat, fontSize=18):
     plt.gca().invert_yaxis()
     return fig
 
-def plotExtCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, nBins=50,
-                     fontSize=16, xlabel='CModel Magnitude', ylabel='Scores', linestyles=[':', '-', '--']):
+def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, nBins=50,
+                  ontSize=16, xlabel='CModel Magnitude', ylabel='Scores', cutType='ext',
+                  linestyles=[':', '-', '--'], fontSize=18):
     magBins = np.linspace(magMin, magMax, num=nBins+1)
     magCenters = 0.5*(magBins[:-1] + magBins[1:])
     complStars = np.zeros(magCenters.shape)
@@ -929,7 +963,12 @@ def plotExtCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.
     complGals = np.zeros(magCenters.shape)
     purityGals = np.zeros(magCenters.shape)
     magMeas = -2.5*np.log10(cat.get('cmodel.flux.'+band)/cat.get('flux.zeromag.'+band))
-    ext = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('cmodel.flux.'+band))
+    if cutType == 'ext':
+        data = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('cmodel.flux.'+band))
+    elif cutType == 'kron':
+        data = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('flux.kron.'+band))
+    elif cutType == 'hsm':
+        q, data = sgsvm.getShape(cat, band, cutType)
     try:
         stellar = cat.get('stellar')
     except KeyError:
@@ -952,7 +991,7 @@ def plotExtCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
     for i, cut in enumerate(cuts):
-        pred = np.logical_and(True, ext < cut)
+        pred = np.logical_and(True, data < cut)
         linestyle = linestyles[i]
         for j in range(nBins):
             magCut = np.logical_and(magMeas > magBins[j], magMeas < magBins[j+1])
@@ -968,12 +1007,12 @@ def plotExtCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.
             if len(predCut) - np.sum(predCut) > 0:
                 purityGals[j] = float(np.sum(goodGals))/(len(predCut) - np.sum(predCut))
 
-        axGal.step(magCenters, complGals, color='red', linestyle=linestyle, label='{0} cut completeness'.format(cut))
-        axGal.step(magCenters, purityGals, color='blue', linestyle=linestyle, label='{0} cut purity'.format(cut))
-        axStar.step(magCenters, complStars, color='red', linestyle=linestyle, label='{0} cut completeness'.format(cut))
-        axStar.step(magCenters, purityStars, color='blue', linestyle=linestyle, label='{0} cut purity'.format(cut))
+        axGal.step(magCenters, complGals, color='red', linestyle=linestyle, label='{0} {1} cut completeness'.format(cut, cutType))
+        axGal.step(magCenters, purityGals, color='blue', linestyle=linestyle, label='{0} {1} cut purity'.format(cut, cutType))
+        axStar.step(magCenters, complStars, color='red', linestyle=linestyle, label='{0} {1} cut completeness'.format(cut, cutType))
+        axStar.step(magCenters, purityStars, color='blue', linestyle=linestyle, label='{0} {1} cut purity'.format(cut, cutType))
 
     axGal.legend(loc='lower left', fontsize=fontSize)
     axStar.legend(loc='lower left', fontsize=fontSize)
-    fig.savefig('/u/garmilla/Desktop/extCutScoresR.eps'.format(band.upper()), dpi=120, bbox_inches='tight')
+    fig.savefig('/u/garmilla/Desktop/{0}CutScoresHSC-{1}.eps'.format(cutType, band.upper()), dpi=120, bbox_inches='tight')
     return fig
