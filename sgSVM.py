@@ -159,10 +159,16 @@ def getShape(cat, band, type):
     q = np.zeros((len(cat),))
     rDet = np.zeros(q.shape)
     for i, record in enumerate(cat): 
-        ellipse = afwGeom.ellipses.Axes(record.get('cmodel.'+type + '.ellipse.' + band))
-        A = ellipse.getA(); B = ellipse.getB()
-        q[i] = B/A
-        rDet[i] = np.sqrt(A*B)
+        if type == 'hsm':
+            moments = record.get('shape.hsm.moments.'+band)
+            xx = moments.getIxx(); yy = moments.getIyy(); xy = moments.getIxy()
+            q[i] = np.sqrt((xx + yy - np.sqrt((xx-yy)**2 + 4*xy**2))/(xx + yy + np.sqrt((xx-yy)**2 + 4*xy**2)))
+            rDet[i] = moments.getDeterminantRadius()
+        else:
+            ellipse = afwGeom.ellipses.Axes(record.get('cmodel.'+type + '.ellipse.' + band))
+            A = ellipse.getA(); B = ellipse.getB()
+            q[i] = B/A
+            rDet[i] = np.sqrt(A*B)
     return q, rDet
 
 def getMag(cat, band, magType):
