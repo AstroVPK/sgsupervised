@@ -392,7 +392,8 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
 
 def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                   xlim=(17.5, 28.0), ylim=(-0.05, 0.5), trueSample=False,
-                  frac=0.02, type='ext', data=None, xType='mag', kargGood={}):
+                  frac=0.02, type='ext', data=None, xType='mag', kargGood={},
+                  deconvType='trace'):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
@@ -434,6 +435,12 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                 elif type == 'hsm':
                     q, data = sgsvm.getShape(cat, band, 'hsm')
                     plt.ylabel('Rdet (HSM) HSC-'+band.upper(), fontsize=fontSize)
+                elif type == 'hsmDeconv':
+                    q, data = sgsvm.getShape(cat, band, 'hsmDeconv', deconvType=deconvType)
+                    if deconvType == 'determinant':
+                        plt.ylabel('Det(Quad_hsm-Quad_psf) HSC-'+band.upper(), fontsize=fontSize)
+                    elif deconvType == 'trace':
+                        plt.ylabel('Tr(Quad_hsm-Quad_psf) HSC-'+band.upper(), fontsize=fontSize)
                 elif type == 'rexp':
                     q, data = sgsvm.getShape(cat, band, 'exp')
                     ax.set_ylabel('rExp HSC-'+band.upper(), fontsize=fontSize)
@@ -509,6 +516,12 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
         elif type == 'hsm':
             q, data = sgsvm.getShape(cat, band, 'hsm')
             plt.ylabel('Rdet (HSM) HSC-'+band.upper(), fontsize=fontSize)
+        elif type == 'hsmDeconv':
+            q, data = sgsvm.getShape(cat, band, 'hsmDeconv', deconvType=deconvType)
+            if deconvType == 'determinant':
+                plt.ylabel('Det(Quad_hsm-Quad_psf) HSC-'+band.upper(), fontsize=fontSize)
+            elif deconvType == 'trace':
+                plt.ylabel('Tr(Quad_hsm-Quad_psf) HSC-'+band.upper(), fontsize=fontSize)
         elif type == 'rexp':
             q, data = sgsvm.getShape(cat, band, 'exp')
             plt.ylabel('rExp HSC-'+band.upper(), fontsize=fontSize)
@@ -955,7 +968,7 @@ def plotCMag(cat, fontSize=18):
 
 def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, nBins=50,
                   ontSize=16, xlabel='CModel Magnitude', ylabel='Scores', cutType='ext',
-                  linestyles=[':', '-', '--'], fontSize=18):
+                  linestyles=[':', '-', '--'], fontSize=18, deconvType='trace'):
     magBins = np.linspace(magMin, magMax, num=nBins+1)
     magCenters = 0.5*(magBins[:-1] + magBins[1:])
     complStars = np.zeros(magCenters.shape)
@@ -969,6 +982,10 @@ def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, 
         data = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('flux.kron.'+band))
     elif cutType == 'hsm':
         q, data = sgsvm.getShape(cat, band, cutType)
+    elif cutType == 'hsmDeconv':
+        q, data = sgsvm.getShape(cat, band, cutType, deconvType=deconvType)
+        cutType = 'rTraceDeconv'
+
     try:
         stellar = cat.get('stellar')
     except KeyError:
