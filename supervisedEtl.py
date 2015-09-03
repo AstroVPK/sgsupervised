@@ -6,6 +6,8 @@ from lsst.pex.exceptions import LsstCppException
 
 from sklearn.grid_search import GridSearchCV
 
+import sgSVM as sgsvm
+
 kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-0.8, 'galDiff':3.9},
                'r': {'lOffsetStar':-2.9, 'starDiff':3.4, 'lOffsetGal':0.5, 'galDiff':2.3},
                'i': {'lOffsetStar':0.2, 'starDiff':0.5, 'lOffsetGal':1.7, 'galDiff':1.5},
@@ -53,10 +55,30 @@ def getMag(cat, band='i'):
     mag = -2.5*np.log10(f/f0)
     return mag
 
+def getMagPsf(cat, band='i'):
+    f = cat.get('flux.psf.'+band)
+    f0 = cat.get('flux.zeromag.'+band)
+    mag = -2.5*np.log10(f/f0)
+    return mag
+
 def getExt(cat, band='i'):
     f = cat.get('cmodel.flux.'+band)
     fP = cat.get('flux.psf.'+band)
     ext = -2.5*np.log10(fP/f)
+    return ext
+
+def getExtKron(cat, band='i'):
+    f = cat.get('flux.kron.'+band)
+    fP = cat.get('flux.psf.'+band)
+    ext = -2.5*np.log10(fP/f)
+    return ext
+
+def getExtHsm(cat, band='i'):
+    q, ext = sgsvm.getShape(cat, band, 'hsm')
+    return ext
+
+def getExtHsmDeconv(cat, band='i'):
+    q, ext = sgsvm.getShape(cat, band, 'hsmDeconv')
     return ext
 
 def getSnr(cat, band='i'):
@@ -99,7 +121,11 @@ def getMuClass(cat):
     return cat.get('mu.class') == 2
 
 inputsDict = {'mag' : getMag,
+              'magPsf' : getMagPsf,
               'ext' : getExt,
+              'extKron' : getExtKron,
+              'extHsm' : getExtHsm,
+              'extHsmDeconv' : getExtHsmDeconv,
               'snr' : getSnr,
               'seeing' : getSeeing,
               'dGaussRadInner' : getDGaussRadInner,
@@ -136,7 +162,7 @@ def getOutput(cat, outputName='mu.class'):
     return outputsDict[outputName](cat)
 
 def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=True,
-              onlyFinite=True):
+              onlyFinite=True, polyOrder=1):
     """
     Load `inputs` from `cat` into `X` and   `output` to `Y`. If onlyFinite is True, then
     throw away all rows with one or more non-finite entries.
@@ -179,6 +205,8 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
         for i in range(X.shape[1]):
             good = np.logical_and(good, np.isfinite(X[:,i]))
     X = X[good]; Y = Y[good]; mags = mags[good]
+    if polyOrder > 1:
+        X = sgsvm.phiPol(X, polyOrder)
     return X, Y, mags
 
 class TrainingSet(object):
@@ -264,7 +292,7 @@ class Training(object):
         X = self.trainingSet.getAllSet()[0]
         return self.clf.predict(X)
 
-    def printPhysicalFit(self):
+    def printPhysicalFit(self, normalized=False):
         if isinstance(self.clf, GridSearchCV):
             estimator = self.clf.best_estimator_
         else:
@@ -274,8 +302,12 @@ class Training(object):
             coeff = estimator.coef_[0]/self.trainingSet.XstdTrain
             intercept = estimator.intercept_ -\
                         np.sum(estimator.coef_[0]*self.trainingSet.XmeanTrain/self.trainingSet.XstdTrain)
-            print "coeff:", coeff/coeff[0]*np.sign(coeff[0])
-            print "intercept:", intercept/coeff[0]*np.sign(coeff[0])
+            if normalized:
+                print "coeff:", coeff/coeff[0]*np.sign(coeff[0])
+                print "intercept:", intercept/coeff[0]*np.sign(coeff[0])
+            else:
+                print "coeff:", coeff
+                print "intercept:", intercept
         else:
             print "coeff:", estimator.coef_/self.trainingSet.XstdAll/estimator.coef_[0][0]
             print "intercept:", estimator.intercept_ -\
