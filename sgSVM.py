@@ -48,6 +48,9 @@ def phiPol(X, q):
                     for l in range(k, d):
                         Xz[:,d + count] = X[:,i]*X[:,j]*X[:,k]*X[:,l]
                         count += 1
+    if q >= 5:
+        raise ValueError("Polynomials with order higher than 4 are not implemented.")
+
     return Xz
 
 def getGood(cat, band='i', magCut=None):
@@ -155,17 +158,46 @@ def getPsfShape(cat, band, type):
         rDet[i] = np.sqrt(A*B)
     return q, rDet
 
-def getShape(cat, band, type):
+def getShape(cat, band, type, deconvType='trace', fallBack=True):
     q = np.zeros((len(cat),))
     rDet = np.zeros(q.shape)
+    if type == 'hsm' or type == 'hsmDeconv':
+        momentsKeyHsm = cat.schema.find('shape.hsm.moments.'+band).getKey()
+        momentsPsfKeyHsm = cat.schema.find('shape.hsm.psfMoments.'+band).getKey()
+        momentsFlagsKeyHsm = cat.schema.find('shape.hsm.moments.flags.'+band).getKey()
+        momentsKeySdss = cat.schema.find('shape.sdss.'+band).getKey()
+        momentsPsfKeySdss = cat.schema.find('shape.sdss.psf.'+band).getKey()
+        momentsFlagsKeySdss = cat.schema.find('shape.sdss.flags.'+band).getKey()
+    else:
+        ellipseKey = cat.schema.find('cmodel.'+type + '.ellipse.' + band).getKey()
     for i, record in enumerate(cat): 
         if type == 'hsm':
-            moments = record.get('shape.hsm.moments.'+band)
+            if not fallBack or not record.get(momentsFlagsKeyHsm):
+                moments = record.get(momentsKeyHsm)
+            else:
+                moments = record.get(momentsKeySdss)
             xx = moments.getIxx(); yy = moments.getIyy(); xy = moments.getIxy()
             q[i] = np.sqrt((xx + yy - np.sqrt((xx-yy)**2 + 4*xy**2))/(xx + yy + np.sqrt((xx-yy)**2 + 4*xy**2)))
             rDet[i] = moments.getDeterminantRadius()
+        elif type == 'hsmDeconv':
+            if not fallBack or not record.get(momentsFlagsKeyHsm):
+                moments = record.get(momentsKeyHsm)
+                momentsPsf = record.get(momentsPsfKeyHsm)
+            else:
+                moments = record.get(momentsKeySdss)
+                momentsPsf = record.get(momentsPsfKeySdss)
+            xx = moments.getIxx() - momentsPsf.getIxx()
+            yy = moments.getIyy() - momentsPsf.getIyy()
+            xy = moments.getIxy() - momentsPsf.getIxy()
+            q[i] = np.sqrt((xx + yy - np.sqrt((xx-yy)**2 + 4*xy**2))/(xx + yy + np.sqrt((xx-yy)**2 + 4*xy**2)))
+            if deconvType == 'determinant':
+                rDet[i] = xx*yy - xy*xy
+            elif deconvType == 'trace':
+                rDet[i] = (xx + yy)/2
+            else:
+                raise ValueError('Deconvolution type {0} not implemented'.format(deconvType))
         else:
-            ellipse = afwGeom.ellipses.Axes(record.get('cmodel.'+type + '.ellipse.' + band))
+            ellipse = afwGeom.ellipses.Axes(record.get(ellipseKey))
             A = ellipse.getA(); B = ellipse.getB()
             q[i] = B/A
             rDet[i] = np.sqrt(A*B)
