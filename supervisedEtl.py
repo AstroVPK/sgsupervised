@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import brentq
 
 import lsst.afw.table as afwTable
 from lsst.pex.exceptions import LsstCppException
@@ -211,13 +212,14 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
 
 class TrainingSet(object):
 
-    def __init__(self, X, Y, mags, testFrac=0.2):
+    def __init__(self, X, Y, mags, testFrac=0.2, polyOrder=1):
         self.X = X
         self.Y = Y
         self.nTotal = len(X)
         self.nTest = int(testFrac*self.nTotal)
         self.nTrain = self.nTotal - self.nTest
         self.mags = mags
+        self.polyOrder = polyOrder
         self.selectTrainTest()
 
     def selectTrainTest(self, randomState=None):
@@ -279,6 +281,7 @@ class Training(object):
         self.trainingSet = trainingSet
         self.clf = clf
         self.preFit = preFit
+        self._computePhysicalFit()
 
     def predictTrainLabels(self):
         X = self.trainingSet.getTrainSet()[0]
@@ -292,27 +295,28 @@ class Training(object):
         X = self.trainingSet.getAllSet()[0]
         return self.clf.predict(X)
 
-    def printPhysicalFit(self, normalized=False):
+    def _computePhysicalFit(self):
         if isinstance(self.clf, GridSearchCV):
             estimator = self.clf.best_estimator_
         else:
             estimator = self.clf
 
         if self.preFit:
-            coeff = estimator.coef_[0]/self.trainingSet.XstdTrain
-            intercept = estimator.intercept_ -\
+            self.coeffPhys = estimator.coef_[0]/self.trainingSet.XstdTrain
+            self.interceptPhys = estimator.intercept_ -\
                         np.sum(estimator.coef_[0]*self.trainingSet.XmeanTrain/self.trainingSet.XstdTrain)
-            if normalized:
-                print "coeff:", coeff/coeff[0]*np.sign(coeff[0])
-                print "intercept:", intercept/coeff[0]*np.sign(coeff[0])
-            else:
-                print "coeff:", coeff
-                print "intercept:", intercept
         else:
-            print "coeff:", estimator.coef_/self.trainingSet.XstdAll/estimator.coef_[0][0]
-            print "intercept:", estimator.intercept_ -\
-                                np.sum(estimator.coef_[0]*self.trainingSet.XmeanAll/self.trainingSet.XstdAll)/\
-                                estimator.coef_[0][0]
+            self.coeffPhys = estimator.coef_[0]/self.trainingSet.XstdAll
+            self.interceptPhys = estimator.intercept_ -\
+                        np.sum(estimator.coef_[0]*self.trainingSet.XmeanAll/self.trainingSet.XstdAll)
+
+    def printPhysicalFit(self, normalized=False):
+        if normalized:
+            print "Normalized coeff:", self.coeffPhys/self.coeffPhys[0]
+            print "Normalized intercept:", self.interceptPhys/self.coeffPhys[0]
+        else:
+            print "coeff:", self.coeffPhys
+            print "intercept:", self.interceptPhys
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-',
                    magRange=None, xlabel='Magnitude', ylabel='Scores'):
@@ -401,3 +405,148 @@ class Training(object):
             print "Cut in standardized data is at {0}".format(-estimator.intercept_[0]/estimator.coef_[0][0])
         else:
             raise ValueError("Transform of type {0} not implemented".format(tType))
+
+    def _getF(self, fixedIndex, fixedVal, varIndex):
+        nTerms = sgsvm.nterms(self.trainingSet.polyOrder, 2)
+        vecRoot = np.zeros((2,))
+        vecRoot[fixedIndex] = fixedVal
+        vecCoeff = np.zeros((nTerms,))
+        vecCoeff[:-1] = self.coeffPhys; vecCoeff[-1] = self.interceptPhys[0]
+        vec = np.zeros((nTerms,))
+        def F(x):
+            vecRoot[varIndex] = x
+            vec[0] = vecRoot[0]; vec[1] = vecRoot[1]; vec[-1] = 1.0
+            count = 0
+            if self.trainingSet.polyOrder >= 2:
+                for i in range(2):
+                    for j in range(i, 2):
+                        vec[2 + count] = vecRoot[i]*vecRoot[j]
+                        count += 1
+            if self.trainingSet.polyOrder >= 3:
+                for i in range(2):
+                    for j in range(i, 2):
+                        for k in range(j, 2):
+                            vec[2 + count] = vecRoot[i]*vecRoot[j]*vecRoot[k]
+                            count += 1
+            if self.trainingSet.polyOrder >= 4:
+                for i in range(2):
+                    for j in range(i, 2):
+                        for k in range(j, 2):
+                            for l in range(k, 2):
+                                vec[2 + count] = vecRoot[i]*vecRoot[j]*vecRoot[k]*vecRoot[l]
+                                count += 1
+            if self.trainingSet.polyOrder >= 5:
+                raise ValueError("Polynomials with order higher than 4 are not implemented.")
+
+            return np.dot(vecCoeff, vec)
+        return F
+
+    def findZero(self, fixedIndex, fixedVal, zeroRange=None, chooseSol=1):
+        assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
+        assert chooseSol in [0, 1]
+
+        if fixedIndex == 0:
+            varIndex = 1
+        elif fixedIndex == 1:
+            varIndex = 0
+        else:
+            raise ValueError('I can only take indexes in [0, 1]')
+
+        if zeroRange is None:
+            zeroRange = (self.trainingSet.X[:,varIndex].min(),self.trainingSet.X[:,varIndex].max())
+
+        if self.trainingSet.polyOrder == 1:
+            sol = (-self.coeffPhys[fixedIndex]*fixedVal - self.interceptPhys[0])/self.coeffPhys[varIndex]
+            if sol < zeroRange[0] or sol > zeroRange[1]:
+                print "WARNING: Solution outside of range {0}".format(zeroRange)
+            return sol
+        elif self.trainingSet.polyOrder == 2:
+            if varIndex == 0:
+                A = self.coeffPhys[2]
+                B = self.coeffPhys[0] + self.coeffPhys[3]*fixedVal
+                C = self.coeffPhys[1]*fixedVal + self.coeffPhys[4]*fixedVal**2 + self.interceptPhys[0]
+            elif varIndex == 1:
+                A = self.coeffPhys[4]
+                B = self.coeffPhys[1] + self.coeffPhys[3]*fixedVal
+                C = self.coeffPhys[0]*fixedVal + self.coeffPhys[2]*fixedVal**2 + self.interceptPhys[0]
+            discr = np.sqrt(B**2 - 4*A*C)
+            sol1 = (-B + discr)/(2*A); sol2 = (-B - discr)/(2*A)
+            if sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
+                return sol1
+            elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
+                return sol2
+            elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
+                print "WARNING: No solution was found in the specified interval, I'll return the one that's closer"
+                d1 = min(np.absolute(sol1 - zeroRange[0]), np.absolute(sol1 - zeroRange[1]))
+                d2 = min(np.absolute(sol2 - zeroRange[0]), np.absolute(sol2 - zeroRange[1]))
+
+                if d1 <= d2:
+                    return sol1
+                elif d2 < d1:
+                    return sol2
+            elif sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
+                print "WARNING: Two solutions were found in the specified interval, I'll return solution {0}".format(chooseSol)
+                if chooseSol == 1:
+                    return sol1
+                elif chooseSol == 2:
+                    return sol2
+        elif self.trainingSet.polyOrder > 2:
+            F = self._getF(fixedIndex, fixedVal, varIndex)
+            try:
+                return brentq(F, zeroRange[0], zeroRange[1])
+            except ValueError as e:
+                figT = plt.figure()
+                arr = np.linspace(zeroRange[0], zeroRange[1], num=100)
+                ys = np.zeros(arr.shape)
+                for i in range(len(arr)):
+                    ys[i] = F(arr[i])
+                plt.plot(arr, ys)
+                raise e
+
+    def plotBoundary(self, rangeIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
+                     ylim=None, yRange=None, frac=0.02, withTrueLabels=True):
+        assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
+
+        if rangeIndex == 0:
+            varIndex = 1
+        elif rangeIndex == 1:
+            varIndex = 0
+        else:
+            raise ValueError('I can only take indexes in [0, 1]')
+
+        if xRange is None:
+            xRange = (self.trainingSet.X[:,rangeIndex].min(),self.trainingSet.X[:,rangeIndex].max())
+
+        xGrid = np.linspace(xRange[0], xRange[1], num=nPoints)
+        yGrid = np.zeros(xGrid.shape)
+
+        for i, fixedVal in enumerate(xGrid):
+            yGrid[i] = self.findZero(rangeIndex, fixedVal, zeroRange=yRange)
+
+        if fig is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(1, 1, 1)
+        else:
+            ax = fig.get_axes()[0]
+
+        if overPlotData:
+            if withTrueLabels:
+                for i in range(int(frac*len(self.trainingSet.X))):
+                    if self.trainingSet.Y[i]:
+                        ax.plot(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='blue')
+                    else:
+                        ax.plot(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='red')
+            else:
+                Xtest, Ytest = self.trainingSet.getTestSet()
+                testIndexes = self.trainingSet.testIndexes
+                Z = self.clf.predict_proba(Xtest)[:,1]
+                sc = ax.scatter(self.trainingSet.X[testIndexes, rangeIndex], self.trainingSet.X[testIndexes, varIndex], c=Z, marker='.', s=1, edgecolors="none")
+                cb = fig.colorbar(sc)
+                cb.set_label('concIndex')
+
+        ax.plot(xGrid, yGrid, color='black')
+
+        if ylim is not None:
+            ax.set_ylim(ylim)
+
+        return fig
