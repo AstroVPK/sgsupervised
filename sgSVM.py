@@ -20,7 +20,7 @@ def nterms(q, d):
     nterms = 1
     for n in range(1, q+1):
         for m in range(1, min(n, d) + 1):
-            nterms += int(comb(n-1, m-1)*comb(d, m))
+            nterms += int(round(comb(n-1, m-1)*comb(d, m)))
     return nterms
 
 def phiPol(X, q):
