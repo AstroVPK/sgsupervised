@@ -244,21 +244,21 @@ class TrainingSet(object):
 
     def getTrainSet(self, standardized=True):
         if standardized:
-            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
+            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes], self.mags[self.trainIndexes]
         else:
-            return self.X[self.trainIndexes], self.Y[self.trainIndexes]
+            return self.X[self.trainIndexes], self.Y[self.trainIndexes], self.mags[self.trainIndexes]
 
     def getTestSet(self, standardized=True):
         if standardized:
-            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
+            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes], self.mags[self.testIndexes]
         else:
-            return self.X[self.testIndexes], self.Y[self.testIndexes]
+            return self.X[self.testIndexes], self.Y[self.testIndexes], self.mags[self.testIndexes]
 
     def getAllSet(self, standardized=True):
         if standardized:
-            return (self.X - self.XmeanAll)/self.XstdAll, self.Y
+            return (self.X - self.XmeanAll)/self.XstdAll, self.Y, self.mags
         else:
-            return self.X, self.Y
+            return self.X, self.Y, self.mags
 
     def applyPreTestTransform(self, X):
         return (X - self.XmeanTrain)/self.XstdTrain
@@ -504,7 +504,7 @@ class Training(object):
                 raise e
 
     def plotBoundary(self, rangeIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
-                     ylim=None, yRange=None, frac=0.02, withTrueLabels=True):
+                     xlim=None, ylim=None, yRange=None, frac=0.02, withTrueLabels=True):
         assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
 
         if rangeIndex == 0:
@@ -537,15 +537,17 @@ class Training(object):
                     else:
                         ax.plot(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='red')
             else:
-                Xtest, Ytest = self.trainingSet.getTestSet()
+                Xtest, Ytest, magTest = self.trainingSet.getTestSet()
                 testIndexes = self.trainingSet.testIndexes
                 Z = self.clf.predict_proba(Xtest)[:,1]
-                sc = ax.scatter(self.trainingSet.X[testIndexes, rangeIndex], self.trainingSet.X[testIndexes, varIndex], c=Z, marker='.', s=1, edgecolors="none")
+                sc = ax.scatter(self.trainingSet.X[testIndexes, rangeIndex], self.trainingSet.X[testIndexes, varIndex], c=Z, marker='.', s=2, edgecolors="none")
                 cb = fig.colorbar(sc)
                 cb.set_label('concIndex')
 
         ax.plot(xGrid, yGrid, color='black')
 
+        if xlim is not None:
+            ax.set_xlim(xlim)
         if ylim is not None:
             ax.set_ylim(ylim)
 
