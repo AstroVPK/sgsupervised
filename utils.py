@@ -393,16 +393,22 @@ def makeSeeingExPlot(cat, bands, size=1, fontSize=14, withLabels=False,
 def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                   xlim=(17.5, 28.0), ylim=(-0.05, 0.5), trueSample=False,
                   frac=0.02, type='ext', data=None, xType='mag', kargGood={},
-                  deconvType='trace'):
+                  deconvType='trace', overplot=False):
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
     if isinstance(band, list) or isinstance(band, tuple):
         bands = band
-        nRow, nColumn = _getExtHistLayout(len(band))
+        nRow, nColumn = _getExtHistLayout(len(band), overplot=overplot)
         fig = plt.figure(figsize=(nColumn*8, nRow*6))
-        for i in range(min(nRow*nColumn, len(bands))):
-            ax = fig.add_subplot(nRow, nColumn, i+1)
+        if overplot:
+            nBands = len(bands)
+            ax = fig.add_subplot(nRow, nColumn, 1)
+        else:
+            nBands = min(nRow*nColumn, len(bands))
+        for i in range(nBands):
+            if not overplot:
+                ax = fig.add_subplot(nRow, nColumn, i+1)
             band = bands[i]
             flux = cat.get('cmodel.flux.'+band)
             fluxPsf = cat.get('flux.psf.'+band)
@@ -414,7 +420,10 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                     stellar = cat.get('mu.class') == 2
             if xType == 'mag':
                 mag = -2.5*np.log10(flux/fluxZero)
-                ax.set_xlabel('CModel Magnitude HSC-'+band.upper(), fontsize=fontSize)
+                if overplot:
+                    ax.set_xlabel('CModel Magnitude All Bands', fontsize=fontSize)
+                else:
+                    ax.set_xlabel('CModel Magnitude HSC-'+band.upper(), fontsize=fontSize)
             elif xType == 'psfMag':
                 mag = -2.5*np.log10(fluxPsf/fluxZero)
                 ax.set_xlabel('PSF Magnitude HSC-'+band.upper(), fontsize=fontSize)
@@ -440,7 +449,10 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                     if deconvType == 'determinant':
                         plt.ylabel('Det(Quad_hsm-Quad_psf) HSC-'+band.upper(), fontsize=fontSize)
                     elif deconvType == 'trace':
-                        plt.ylabel('Tr(Quad_hsm-Quad_psf) HSC-'+band.upper(), fontsize=fontSize)
+                        if overplot:
+                            plt.ylabel('Tr(Quad_hsm-Quad_psf) All Bands', fontsize=fontSize)
+                        else:
+                            plt.ylabel('Tr(Quad_hsm-Quad_psf) HSC-'+band.upper(), fontsize=fontSize)
                 elif type == 'rexp':
                     q, data = sgsvm.getShape(cat, band, 'exp')
                     ax.set_ylabel('rExp HSC-'+band.upper(), fontsize=fontSize)
@@ -559,8 +571,8 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
     fig.savefig('/u/garmilla/Desktop/cosmosMatching.png', dpi=120, bbox_inches='tight')
     return fig
 
-def _getExtHistLayout(nCuts):
-    if nCuts == 1:
+def _getExtHistLayout(nCuts, overplot=False):
+    if nCuts == 1 or overplot:
         return 1, 1
     elif nCuts == 2:
         return 1, 2
