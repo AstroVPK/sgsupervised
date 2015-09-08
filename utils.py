@@ -411,7 +411,9 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                 ax = fig.add_subplot(nRow, nColumn, i+1)
             band = bands[i]
             flux = cat.get('cmodel.flux.'+band)
+            fluxErr = cat.get('cmodel.flux.err.'+band)
             fluxPsf = cat.get('flux.psf.'+band)
+            fluxPsfErr = cat.get('flux.psf.err.'+band)
             fluxZero = cat.get('flux.zeromag.'+band)
             if withLabels:
                 try:
@@ -424,9 +426,15 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                     ax.set_xlabel('CModel Magnitude All Bands', fontsize=fontSize)
                 else:
                     ax.set_xlabel('CModel Magnitude HSC-'+band.upper(), fontsize=fontSize)
+            elif xType == 'magSnr':
+                mag = flux/fluxErr
+                plt.xlabel('CModel S/N HSC-'+band.upper(), fontsize=fontSize)
             elif xType == 'psfMag':
                 mag = -2.5*np.log10(fluxPsf/fluxZero)
                 ax.set_xlabel('PSF Magnitude HSC-'+band.upper(), fontsize=fontSize)
+            elif xType == 'psfSnr':
+                mag = fluxPsf/fluxPsfErr
+                plt.xlabel('PSF S/N HSC-'+band.upper(), fontsize=fontSize)
             elif xType == 'seeing':
                 mag = cat.get('seeing.'+band)
                 ax.set_xlabel('Seeing HSC-'+band.upper(), fontsize=fontSize)
@@ -496,7 +504,9 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
         return fig
     fig = plt.figure()
     flux = cat.get('cmodel.flux.'+band)
+    fluxErr = cat.get('cmodel.flux.err.'+band)
     fluxPsf = cat.get('flux.psf.'+band)
+    fluxPsfErr = cat.get('flux.psf.err.'+band)
     fluxZero = cat.get('flux.zeromag.'+band)
     if withLabels:
         try:
@@ -509,9 +519,15 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
     if xType == 'mag':
         mag = -2.5*np.log10(flux/fluxZero)
         plt.xlabel('CModel Magnitude HSC-'+band.upper(), fontsize=fontSize)
+    elif xType == 'magSnr':
+        mag = flux/fluxErr
+        plt.xlabel('CModel S/N HSC-'+band.upper(), fontsize=fontSize)
     elif xType == 'psfMag':
         mag = -2.5*np.log10(fluxPsf/fluxZero)
         plt.xlabel('PSF Magnitude HSC-'+band.upper(), fontsize=fontSize)
+    elif xType == 'psfSnr':
+        mag = fluxPsf/fluxPsfErr
+        plt.xlabel('PSF S/N HSC-'+band.upper(), fontsize=fontSize)
     elif xType == 'seeing':
         mag = cat.get('seeing.'+band)
         plt.xlabel('Seeing HSC-'+band.upper(), fontsize=fontSize)
