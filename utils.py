@@ -397,6 +397,9 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
+    if trueSample:
+        nSample = int(frac*len(cat))
+        idxSample = np.random.choice(len(cat), nSample, replace=False)
     if isinstance(band, list) or isinstance(band, tuple):
         bands = band
         nRow, nColumn = _getExtHistLayout(len(band), overplot=overplot)
@@ -431,7 +434,10 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                 plt.xlabel('CModel S/N HSC-'+band.upper(), fontsize=fontSize)
             elif xType == 'psfMag':
                 mag = -2.5*np.log10(fluxPsf/fluxZero)
-                ax.set_xlabel('PSF Magnitude HSC-'+band.upper(), fontsize=fontSize)
+                if overplot:
+                    ax.set_xlabel('PSF Magnitude All Bands', fontsize=fontSize)
+                else:
+                    ax.set_xlabel('PSF Magnitude HSC-'+band.upper(), fontsize=fontSize)
             elif xType == 'psfSnr':
                 mag = fluxPsf/fluxPsfErr
                 plt.xlabel('PSF S/N HSC-'+band.upper(), fontsize=fontSize)
@@ -478,7 +484,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                 gals = np.logical_and(good, np.logical_not(stellar))
                 stars = np.logical_and(good, stellar)
                 if trueSample:
-                    for i in range(int(frac*len(mag))):
+                    for i in idxSample:
                         if stars[i]:
                             ax.plot(mag[i], data[i], marker='.', markersize=size, color='blue')
                         elif gals[i]:
@@ -488,7 +494,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                     ax.scatter(mag[stars], data[stars], marker='.', s=size, color='blue', label='Stars')
             else:
                 if trueSample:
-                    for i in range(int(frac*len(mag))):
+                    for i in idxSample:
                         if good[i]:
                             ax.plot(mag[i], data[i], marker='.', markersize=size, color='black')
                 else:
@@ -498,8 +504,8 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
                 tick.label.set_fontsize(fontSize)
             for tick in ax.yaxis.get_major_ticks():
                 tick.label.set_fontsize(fontSize)
-            if withLabels:
-                ax.legend(loc=1, fontsize=18)
+            #if withLabels:
+            #    ax.legend(loc=1, fontsize=18)
         fig.savefig('/u/garmilla/Desktop/cosmosMatching.png', dpi=120, bbox_inches='tight')
         return fig
     fig = plt.figure()
@@ -567,7 +573,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
         gals = np.logical_and(good, np.logical_not(stellar))
         stars = np.logical_and(good, stellar)
         if trueSample:
-            for i in range(int(frac*len(mag))):
+            for i in idxSample:
                 if stars[i]:
                     plt.plot(mag[i], data[i], marker='.', markersize=size, color='blue')
                 else:
@@ -582,8 +588,8 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
         tick.label.set_fontsize(fontSize)
     for tick in ax.yaxis.get_major_ticks():
         tick.label.set_fontsize(fontSize)
-    if withLabels:
-        plt.legend(loc=1, fontsize=18)
+    #if withLabels:
+    #    plt.legend(loc=1, fontsize=18)
     fig.savefig('/u/garmilla/Desktop/cosmosMatching.png', dpi=120, bbox_inches='tight')
     return fig
 
