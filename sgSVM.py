@@ -48,8 +48,18 @@ def phiPol(X, q):
                     for l in range(k, d):
                         Xz[:,d + count] = X[:,i]*X[:,j]*X[:,k]*X[:,l]
                         count += 1
+
     if q >= 5:
-        raise ValueError("Polynomials with order higher than 4 are not implemented.")
+        for i in range(d):
+            for j in range(i, d):
+                for k in range(j, d):
+                    for l in range(k, d):
+                        for m in range(l, d):
+                            Xz[:,d + count] = X[:,i]*X[:,j]*X[:,k]*X[:,l]*X[:,m]
+                            count += 1
+
+    if q >= 6:
+        raise ValueError("Polynomials with order higher than 5 are not implemented.")
 
     return Xz
 
@@ -193,7 +203,8 @@ def getShape(cat, band, type, deconvType='trace', fallBack=True):
             if deconvType == 'determinant':
                 rDet[i] = xx*yy - xy*xy
             elif deconvType == 'trace':
-                rDet[i] = (xx + yy)/2
+                #rDet[i] = (xx + yy)/2
+                rDet[i] = xx + yy
             else:
                 raise ValueError('Deconvolution type {0} not implemented'.format(deconvType))
         else:
