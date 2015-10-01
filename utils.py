@@ -40,7 +40,10 @@ def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True,
     good = np.logical_and(True, ext < 5.0)
     if iBandCut:
         for b in ['g', 'r', 'i', 'z', 'y']:
-            good = dropMatchOutliers(cat, good=good, band=b, **kargOutlier[b])
+            try:
+                good = dropMatchOutliers(cat, good=good, band=b, **kargOutlier[b])
+            except KeyError:
+                pass
     if noParent:
         good = np.logical_and(good, cat.get('parent.'+band) == 0)
     if magCut is not None:
