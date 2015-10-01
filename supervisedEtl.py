@@ -88,6 +88,12 @@ def getSnr(cat, band='i'):
     snr = f/fErr
     return snr
     
+def getSnrPsf(cat, band='i'):
+    f = cat.get('flux.psf.'+band)
+    fErr = cat.get('flux.psf.err.'+band)
+    snr = f/fErr
+    return snr
+
 def getSeeing(cat, band='i'):
     seeing = cat.get('seeing.'+band)
     return seeing
@@ -128,6 +134,7 @@ inputsDict = {'mag' : getMag,
               'extHsm' : getExtHsm,
               'extHsmDeconv' : getExtHsmDeconv,
               'snr' : getSnr,
+              'snrPsf' : getSnrPsf,
               'seeing' : getSeeing,
               'dGaussRadInner' : getDGaussRadInner,
               'dGaussRadOuter' : getDGaussRadOuter,
@@ -318,6 +325,42 @@ class Training(object):
             print "coeff:", self.coeffPhys
             print "intercept:", self.interceptPhys
 
+    def printPolynomial(self, names):
+        polyOrder = self.trainingSet.polyOrder
+        assert self.trainingSet.X.shape[1] == sgsvm.nterms(polyOrder, len(names)) - 1
+        nTerms = len(names)
+
+        polyStr = "{0} ".format(self.interceptPhys[0])
+
+        count = 0
+        for i in range(len(names)):
+            if self.coeffPhys[i] < 0.0:
+                polyStr += "{0}*{1} ".format(self.coeffPhys[i], names[i])
+            else:
+                polyStr += "+{0}*{1} ".format(self.coeffPhys[i], names[i])
+            count += 1
+
+        if polyOrder >= 2:
+            for i in range(nTerms):
+                for j in range(i, nTerms):
+                    if self.coeffPhys[count] < 0.0:
+                        polyStr += "{0}*{1}*{2} ".format(self.coeffPhys[count], names[i], names[j])
+                    else:
+                        polyStr += "+{0}*{1}*{2} ".format(self.coeffPhys[count], names[i], names[j])
+                    count += 1
+
+        if polyOrder >= 3:
+            for i in range(nTerms):
+                for j in range(i, nTerms):
+                    for k in range(j, nTerms):
+                        if self.coeffPhys[count] < 0.0:
+                            polyStr += "{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                        else:
+                            polyStr += "+{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                        count += 1
+
+        print polyStr
+
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-',
                    magRange=None, xlabel='Magnitude', ylabel='Scores'):
         if sType == 'test':
@@ -436,7 +479,15 @@ class Training(object):
                                 vec[2 + count] = vecRoot[i]*vecRoot[j]*vecRoot[k]*vecRoot[l]
                                 count += 1
             if self.trainingSet.polyOrder >= 5:
-                raise ValueError("Polynomials with order higher than 4 are not implemented.")
+                for i in range(2):
+                    for j in range(i, 2):
+                        for k in range(j, 2):
+                            for l in range(k, 2):
+                                for m in range(l, 2):
+                                    vec[2 + count] = vecRoot[i]*vecRoot[j]*vecRoot[k]*vecRoot[l]*vecRoot[m]
+                                    count += 1
+            if self.trainingSet.polyOrder >= 6:
+                raise ValueError("Polynomials with order higher than 5 are not implemented.")
 
             return np.dot(vecCoeff, vec)
         return F
@@ -504,7 +555,8 @@ class Training(object):
                 raise e
 
     def plotBoundary(self, rangeIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
-                     xlim=None, ylim=None, yRange=None, frac=0.02, withTrueLabels=True):
+                     xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.02,
+                     withTrueLabels=True, fontSize=18):
         assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
 
         if rangeIndex == 0:
@@ -531,7 +583,9 @@ class Training(object):
 
         if overPlotData:
             if withTrueLabels:
-                for i in range(int(frac*len(self.trainingSet.X))):
+                nSample = int(frac*len(self.trainingSet.X))
+                idxSample = np.random.choice(len(self.trainingSet.X), nSample, replace=False)
+                for i in idxSample:
                     if self.trainingSet.Y[i]:
                         ax.plot(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='blue')
                     else:
@@ -542,7 +596,8 @@ class Training(object):
                 Z = self.clf.predict_proba(Xtest)[:,1]
                 sc = ax.scatter(self.trainingSet.X[testIndexes, rangeIndex], self.trainingSet.X[testIndexes, varIndex], c=Z, marker='.', s=2, edgecolors="none")
                 cb = fig.colorbar(sc)
-                cb.set_label('concIndex')
+                cb.set_label('P(Star)', fontsize=fontSize)
+                cb.ax.tick_params(labelsize=fontSize)
 
         ax.plot(xGrid, yGrid, color='black')
 
@@ -550,5 +605,14 @@ class Training(object):
             ax.set_xlim(xlim)
         if ylim is not None:
             ax.set_ylim(ylim)
+        if xlabel is not None:
+            ax.set_xlabel(xlabel, fontsize=fontSize)
+        if ylabel is not None:
+            ax.set_ylabel(ylabel, fontsize=fontSize)
+
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
 
         return fig
