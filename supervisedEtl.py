@@ -288,6 +288,37 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmo
     else:
         return X, Y, mags, exts
 
+def extractXColY(cat, mode='colors', **kargs):
+    assert kargs['withErr'] == True
+    X, XErr, Y, mags, exts = extractXY(cat, **kargs)
+    bands = kargs['bands']
+    cNames = []
+    nColors = X.shape[1] - 1
+    XCol = np.zeros((X.shape[0], nColors))
+    XColErr = np.zeros(XCol.shape)
+    XColCov = np.zeros(XCol.shape + XCol.shape[-1:])
+    diag = np.arange(XCol.shape[-1]) # To fill variance terms
+    offDiag = diag[:-1] + 1 # To fill covariance terms
+    if mode == 'colors':
+        for i in range(nColors):
+            cNames.append(bands[i] + '-' + bands[i+1])
+            XCol[:, i] = X[:, i] - X[:, i+1]
+            XColErr[:, i] = XErr[:,i]**2 + XErr[:,i+1]**2
+
+        covStack = []
+        for i in range(1, len(bands)-1):
+            cov = -XErr[:, i]**2
+            covStack.append(cov)
+        covOffDiag = np.vstack(covStack).T
+
+        XColCov[:, diag, diag] = XColErr
+        XColCov[:,diag[:-1], offDiag] = covOffDiag
+        XColCov[:,offDiag, diag[:-1]] = covOffDiag
+    else:
+        raise ValueError("Mode {0} not implemented".format(mode))
+
+    return XCol, XColCov, Y, mags, exts
+
 class TrainingSet(object):
 
     def __init__(self, X, Y, mags, testFrac=0.2, polyOrder=1):
