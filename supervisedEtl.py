@@ -56,17 +56,50 @@ def getMag(cat, band='i'):
     mag = -2.5*np.log10(f/f0)
     return mag
 
+def getMagErr(cat, band='i'):
+    f = cat.get('cmodel.flux.'+band)
+    fErr = cat.get('cmodel.flux.err.'+band)
+    f0 = cat.get('flux.zeromag.'+band)
+    f0Err = cat.get('flux.zeromag.err.'+band)
+    rat = f/f0
+    ratErr = np.sqrt(np.square(fErr) + np.square(f*f0Err/f0))/f0
+    magErr = 2.5/np.log(10.0)*ratErr/rat
+    return magErr
+
 def getMagPsf(cat, band='i'):
     f = cat.get('flux.psf.'+band)
     f0 = cat.get('flux.zeromag.'+band)
     mag = -2.5*np.log10(f/f0)
     return mag
 
+def getMagPsfErr(cat, band='i'):
+    f = cat.get('flux.psf.'+band)
+    fErr = cat.get('flux.psf.err.'+band)
+    f0 = cat.get('flux.zeromag.'+band)
+    f0Err = cat.get('flux.zeromag.err.'+band)
+    rat = f/f0
+    ratErr = np.sqrt(np.square(fErr) + np.square(f*f0Err/f0))/f0
+    magErr = 2.5/np.log(10.0)*ratErr/rat
+    return magErr
+
 def getExt(cat, band='i'):
     f = cat.get('cmodel.flux.'+band)
     fP = cat.get('flux.psf.'+band)
     ext = -2.5*np.log10(fP/f)
     return ext
+
+def getExtErr(cat, band='i', corr=0.3):
+    f = cat.get('cmodel.flux.'+band)
+    fErr = cat.get('cmodel.flux.err.'+band)
+    fP = cat.get('flux.psf.'+band)
+    fPErr = cat.get('flux.psf.err.'+band)
+    rat = fP/f
+    ratErr = np.sqrt(np.square(fPErr) + np.square(fP*fErr/f))/f
+    extErr = 2.5/np.log(10.0)*ratErr/rat
+    # For now, this is a very crude approximation, the above code is
+    # just a placeholder
+    extErr = 1.0/f*fErr
+    return extErr
 
 def getExtKron(cat, band='i'):
     f = cat.get('flux.kron.'+band)
@@ -143,7 +176,16 @@ inputsDict = {'mag' : getMag,
               'dGaussQOuter' : getDGaussQOuter,
               'dGaussThetaInner' : getDGaussThetaInner,
               'dGaussThetaOuter' : getDGaussThetaOuter
+              #'fluxRat' : getFluxRat,
+              #'fluxPsfRat' : getFluxRatPsf
              }
+
+inputsErrDict = {'mag' : getMagErr,
+                 'magPsf' : getMagPsfErr,
+                 'ext' : getExtErr
+                 #'fluxRat' : getFluxRatErr,
+                 #'fluxPsfRat' : getFluxPsfRatErr
+                }
 
 outputsDict = {'stellar' : getStellar,
                'mu.class' : getMuClass
@@ -151,6 +193,9 @@ outputsDict = {'stellar' : getStellar,
 
 def getInputsList():
     return inputsDict.keys()
+
+def getInputsErrList():
+    return inputsErrDict.keys()
 
 def getOutputsList():
     return outputsDict.keys()
@@ -162,6 +207,13 @@ def getInput(cat, inputName='mag', band='i'):
     """
     return inputsDict[inputName](cat, band=band)
 
+def getInputErr(cat, inputName='mag', band='i'):
+    """
+    Get the input's `inputName` error from cat `cat` in band `band`. To see the list of valid inputs run
+    `getInputsErrList()`.
+    """
+    return inputsErrDict[inputName](cat, band=band)
+
 def getOutput(cat, outputName='mu.class'):
     """
     Get the output `outputName` from cat `cat` in band `band`. To see the list of valid outputs run
@@ -169,8 +221,8 @@ def getOutput(cat, outputName='mu.class'):
     """
     return outputsDict[outputName](cat)
 
-def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=True,
-              onlyFinite=True, polyOrder=1):
+def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmodel', extsType='cmodel', concatBands=True,
+              onlyFinite=True, polyOrder=1, withErr=False):
     """
     Load `inputs` from `cat` into `X` and   `output` to `Y`. If onlyFinite is True, then
     throw away all rows with one or more non-finite entries.
@@ -181,25 +233,37 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
             cat = afwTable.SourceCatalog.readFits(cat)
         except LsstCppException:
             cat = afwTable.SimpleCatalog.readFits(cat)
-    nRecords = len(cat); nBands = len(bands)
+    nRecords = len(cat); nBands = len(bands); nInputs = len(inputs)
     if concatBands:
         X = np.zeros((nRecords*len(bands), len(inputs)))
         Y = np.zeros((nRecords*len(bands),), dtype=bool)
         mags = np.zeros((nRecords*len(bands),))
+        exts = np.zeros((nRecords*len(bands),))
+        if withErr:
+            XErr = np.zeros((nRecords*len(bands), len(inputs)))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
                 X[i*nRecords:(i+1)*nRecords, j] = getInput(cat, inputName=inputName, band=band)
+                if withErr:
+                    XErr[i*nRecords:(i+1)*nRecords, j] = getInputErr(cat, inputName=inputName, band=band)
             Y[i*nRecords:(i+1)*nRecords] = getOutput(cat, outputName=output)
             mags[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='mag', band=band)
+            exts[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='ext', band=band)
     else:
         X = np.zeros((nRecords, len(inputs)*len(bands)))
         Y = np.zeros((nRecords,), dtype=bool)
         mags = np.zeros((nRecords,))
+        exts = np.zeros((nRecords,))
+        if withErr:
+            XErr = np.zeros((nRecords, len(inputs)*len(bands)))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
-                X[:, i*nBands + j] = getInput(cat, inputName=inputName, band=band)
+                X[:, i*nInputs + j] = getInput(cat, inputName=inputName, band=band)
+                if withErr:
+                    XErr[:, i*nInputs + j] = getInputErr(cat, inputName=inputName, band=band)
         Y = getOutput(cat, outputName=output)
-        mags = getOutput(cat, inputName='mag', band=band)
+        mags = getInput(cat, inputName='mag', band=band)
+        exts = getInput(cat, inputName='ext', band=band)
     if concatBands:
         good = np.ones((nRecords*len(bands),), dtype=bool)
     else:
@@ -212,10 +276,17 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], concatBands=T
     if onlyFinite:
         for i in range(X.shape[1]):
             good = np.logical_and(good, np.isfinite(X[:,i]))
-    X = X[good]; Y = Y[good]; mags = mags[good]
+            if withErr:
+                good = np.logical_and(good, np.isfinite(XErr[:,i]))
+    X = X[good]; Y = Y[good]; mags = mags[good]; exts = exts[good]
+    if withErr:
+        XErr = XErr[good]
     if polyOrder > 1:
         X = sgsvm.phiPol(X, polyOrder)
-    return X, Y, mags
+    if withErr:
+        return X, XErr, Y, mags, exts
+    else:
+        return X, Y, mags, exts
 
 class TrainingSet(object):
 
@@ -251,21 +322,30 @@ class TrainingSet(object):
 
     def getTrainSet(self, standardized=True):
         if standardized:
-            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes], self.mags[self.trainIndexes]
+            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
         else:
-            return self.X[self.trainIndexes], self.Y[self.trainIndexes], self.mags[self.trainIndexes]
+            return self.X[self.trainIndexes], self.Y[self.trainIndexes]
+
+    def getTrainMags(self):
+        return self.mags[self.trainIndexes]
 
     def getTestSet(self, standardized=True):
         if standardized:
-            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes], self.mags[self.testIndexes]
+            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
         else:
-            return self.X[self.testIndexes], self.Y[self.testIndexes], self.mags[self.testIndexes]
+            return self.X[self.testIndexes], self.Y[self.testIndexes]
+
+    def getTestMags(self):
+        return self.mags[self.testIndexes]
 
     def getAllSet(self, standardized=True):
         if standardized:
             return (self.X - self.XmeanAll)/self.XstdAll, self.Y, self.mags
         else:
             return self.X, self.Y, self.mags
+
+    def getAllMags(self):
+        return self.mags
 
     def applyPreTestTransform(self, X):
         return (X - self.XmeanTrain)/self.XstdTrain
