@@ -221,6 +221,80 @@ def getOutput(cat, outputName='mu.class'):
     """
     return outputsDict[outputName](cat)
 
+class TrainingSet(object):
+
+    def __init__(self, X, Y, mags, testFrac=0.2, polyOrder=1):
+        self.X = X
+        self.Y = Y
+        self.nTotal = len(X)
+        self.nTest = int(testFrac*self.nTotal)
+        self.nTrain = self.nTotal - self.nTest
+        self.mags = mags
+        self.polyOrder = polyOrder
+        self.selectTrainTest()
+
+    def selectTrainTest(self, randomState=None):
+        prng = np.random.RandomState()
+        if randomState is None:
+            self.randomState = prng.get_state()
+        else:
+            prng.set_state(randomState)
+            self.randomState = randomState
+        indexes = prng.choice(self.nTotal, self.nTotal, replace=False)
+        self.trainIndexes = (indexes[:self.nTrain],)
+        self.testIndexes = (indexes[self.nTrain:self.nTotal],)
+        self._computeTransforms()
+
+    def _computeTransforms(self):
+        self.XmeanTrain = np.mean(self.X[self.trainIndexes], axis=0)
+        self.XstdTrain = np.std(self.X[self.trainIndexes], axis=0)
+        self.XmeanTest = np.mean(self.X[self.testIndexes], axis=0)
+        self.XstdTest = np.std(self.X[self.testIndexes], axis=0)
+        self.XmeanAll = np.mean(self.X, axis=0)
+        self.XstdAll = np.std(self.X, axis=0)
+
+    def getTrainSet(self, standardized=True):
+        if standardized:
+            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
+        else:
+            return self.X[self.trainIndexes], self.Y[self.trainIndexes]
+
+    def getTrainMags(self):
+        return self.mags[self.trainIndexes]
+
+    def getTestSet(self, standardized=True):
+        if standardized:
+            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
+        else:
+            return self.X[self.testIndexes], self.Y[self.testIndexes]
+
+    def getTestMags(self):
+        return self.mags[self.testIndexes]
+
+    def getAllSet(self, standardized=True):
+        if standardized:
+            return (self.X - self.XmeanAll)/self.XstdAll, self.Y, self.mags
+        else:
+            return self.X, self.Y, self.mags
+
+    def getAllMags(self):
+        return self.mags
+
+    def applyPreTestTransform(self, X):
+        return (X - self.XmeanTrain)/self.XstdTrain
+
+    def applyPostTestTransform(self, X):
+        return (X - self.XmeanAll)/self.XstdAll
+
+    def plotLabeledHist(self, idx, physical=True, nBins=100):
+        hist, bins = np.histogram(self.X[:,idx], bins=nBins)
+        dataStars = self.X[:,idx][self.Y]
+        dataGals = self.X[:,idx][np.logical_not(self.Y)]
+        fig = plt.figure()
+        plt.hist(dataStars, bins=bins, histtype='step', color='blue', label='Stars')
+        plt.hist(dataGals, bins=bins, histtype='step', color='red', label='Galaxies')
+        return fig
+
 def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmodel', extsType='cmodel', concatBands=True,
               onlyFinite=True, polyOrder=1, withErr=False):
     """
@@ -318,80 +392,6 @@ def extractXColY(cat, mode='colors', **kargs):
         raise ValueError("Mode {0} not implemented".format(mode))
 
     return XCol, XColCov, Y, mags, exts
-
-class TrainingSet(object):
-
-    def __init__(self, X, Y, mags, testFrac=0.2, polyOrder=1):
-        self.X = X
-        self.Y = Y
-        self.nTotal = len(X)
-        self.nTest = int(testFrac*self.nTotal)
-        self.nTrain = self.nTotal - self.nTest
-        self.mags = mags
-        self.polyOrder = polyOrder
-        self.selectTrainTest()
-
-    def selectTrainTest(self, randomState=None):
-        prng = np.random.RandomState()
-        if randomState is None:
-            self.randomState = prng.get_state()
-        else:
-            prng.set_state(randomState)
-            self.randomState = randomState
-        indexes = prng.choice(self.nTotal, self.nTotal, replace=False)
-        self.trainIndexes = (indexes[:self.nTrain],)
-        self.testIndexes = (indexes[self.nTrain:self.nTotal],)
-        self._computeTransforms()
-
-    def _computeTransforms(self):
-        self.XmeanTrain = np.mean(self.X[self.trainIndexes], axis=0)
-        self.XstdTrain = np.std(self.X[self.trainIndexes], axis=0)
-        self.XmeanTest = np.mean(self.X[self.testIndexes], axis=0)
-        self.XstdTest = np.std(self.X[self.testIndexes], axis=0)
-        self.XmeanAll = np.mean(self.X, axis=0)
-        self.XstdAll = np.std(self.X, axis=0)
-
-    def getTrainSet(self, standardized=True):
-        if standardized:
-            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
-        else:
-            return self.X[self.trainIndexes], self.Y[self.trainIndexes]
-
-    def getTrainMags(self):
-        return self.mags[self.trainIndexes]
-
-    def getTestSet(self, standardized=True):
-        if standardized:
-            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
-        else:
-            return self.X[self.testIndexes], self.Y[self.testIndexes]
-
-    def getTestMags(self):
-        return self.mags[self.testIndexes]
-
-    def getAllSet(self, standardized=True):
-        if standardized:
-            return (self.X - self.XmeanAll)/self.XstdAll, self.Y, self.mags
-        else:
-            return self.X, self.Y, self.mags
-
-    def getAllMags(self):
-        return self.mags
-
-    def applyPreTestTransform(self, X):
-        return (X - self.XmeanTrain)/self.XstdTrain
-
-    def applyPostTestTransform(self, X):
-        return (X - self.XmeanAll)/self.XstdAll
-
-    def plotLabeledHist(self, idx, physical=True, nBins=100):
-        hist, bins = np.histogram(self.X[:,idx], bins=nBins)
-        dataStars = self.X[:,idx][self.Y]
-        dataGals = self.X[:,idx][np.logical_not(self.Y)]
-        fig = plt.figure()
-        plt.hist(dataStars, bins=bins, histtype='step', color='blue', label='Stars')
-        plt.hist(dataGals, bins=bins, histtype='step', color='red', label='Galaxies')
-        return fig
 
 class Training(object):
 
