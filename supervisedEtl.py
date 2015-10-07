@@ -50,6 +50,15 @@ def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True):
         good = np.logical_and(good, magI < magCut[1])
     return good
 
+def getId(cat, band='i'):
+    return cat.get('multId.'+band)
+
+def getRa(cat, band='i'):
+    return cat.get('coord.'+ band + '.ra')
+
+def getDec(cat, band='i'):
+    return cat.get('coord.'+ band + '.dec')
+
 def getMag(cat, band='i'):
     f = cat.get('cmodel.flux.'+band)
     f0 = cat.get('flux.zeromag.'+band)
@@ -160,7 +169,10 @@ def getMuClass(cat):
     # with mu.class=3.
     return cat.get('mu.class') == 2
 
-inputsDict = {'mag' : getMag,
+inputsDict = {'id' : getId,
+              'ra' : getRa,
+              'dec' : getDec,
+              'mag' : getMag,
               'magPsf' : getMagPsf,
               'ext' : getExt,
               'extKron' : getExtKron,
@@ -223,13 +235,33 @@ def getOutput(cat, outputName='mu.class'):
 
 class TrainingSet(object):
 
-    def __init__(self, X, Y, mags, testFrac=0.2, polyOrder=1):
-        self.X = X
-        self.Y = Y
+    def __init__(self, X, Y, XErr=None, ids=None, ras=None, decs=None, mags=None, exts=None,
+                 testFrac=0.2, polyOrder=1):
         self.nTotal = len(X)
+        self.X = X
+        assert len(Y) == self.nTotal
+        self.Y = Y
+        if XErr is not None:
+            assert len(XErr) == self.nTotal
+            self.XErr = XErr
+        if ids is not None:
+            assert len(ids) == self.nTotal
+            self.ids = ids
+        if ras is not None:
+            assert len(ras) == self.nTotal
+            self.ras = ras
+        if decs is not None:
+            assert len(decs) == self.nTotal
+            self.decs = decs
+        if mags is not None:
+            assert len(mags) == self.nTotal
+            self.mags = mags
+        if exts is not None:
+            assert len(exts) == self.nTotal
+            self.exts = exts
+        self.testFrac = testFrac
         self.nTest = int(testFrac*self.nTotal)
         self.nTrain = self.nTotal - self.nTest
-        self.mags = mags
         self.polyOrder = polyOrder
         self.selectTrainTest()
 
@@ -259,8 +291,20 @@ class TrainingSet(object):
         else:
             return self.X[self.trainIndexes], self.Y[self.trainIndexes]
 
+    def getTrainIds(self):
+        return self.ids[self.trainIndexes]
+
+    def getTrainRas(self):
+        return self.ras[self.trainIndexes]
+
+    def getTrainDecs(self):
+        return self.decs[self.trainIndexes]
+
     def getTrainMags(self):
         return self.mags[self.trainIndexes]
+
+    def getTrainExts(self):
+        return self.exts[self.trainIndexes]
 
     def getTestSet(self, standardized=True):
         if standardized:
@@ -268,8 +312,20 @@ class TrainingSet(object):
         else:
             return self.X[self.testIndexes], self.Y[self.testIndexes]
 
+    def getTestIds(self):
+        return self.ids[self.testIndexes]
+
+    def getTestRas(self):
+        return self.ras[self.testIndexes]
+
+    def getTestDecs(self):
+        return self.decs[self.testIndexes]
+
     def getTestMags(self):
         return self.mags[self.testIndexes]
+
+    def getTestExts(self):
+        return self.exts[self.testIndexes]
 
     def getAllSet(self, standardized=True):
         if standardized:
@@ -277,8 +333,20 @@ class TrainingSet(object):
         else:
             return self.X, self.Y, self.mags
 
+    def getAllIds(self):
+        return self.ids
+
+    def getAllRas(self):
+        return self.ras
+
+    def getAllDecs(self):
+        return self.decs
+
     def getAllMags(self):
         return self.mags
+
+    def getAllExts(self):
+        return self.exts
 
     def applyPreTestTransform(self, X):
         return (X - self.XmeanTrain)/self.XstdTrain
@@ -295,7 +363,7 @@ class TrainingSet(object):
         plt.hist(dataGals, bins=bins, histtype='step', color='red', label='Galaxies')
         return fig
 
-def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmodel', extsType='cmodel', concatBands=True,
+def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmodel', extsType='cmodel', concatBands=True,
               onlyFinite=True, polyOrder=1, withErr=False):
     """
     Load `inputs` from `cat` into `X` and   `output` to `Y`. If onlyFinite is True, then
@@ -309,6 +377,9 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmo
             cat = afwTable.SimpleCatalog.readFits(cat)
     nRecords = len(cat); nBands = len(bands); nInputs = len(inputs)
     if concatBands:
+        ids = np.zeros((nRecords*len(bands), len(inputs)), dtype=int)
+        ras = np.zeros((nRecords*len(bands), len(inputs)))
+        decs = np.zeros((nRecords*len(bands), len(inputs)))
         X = np.zeros((nRecords*len(bands), len(inputs)))
         Y = np.zeros((nRecords*len(bands),), dtype=bool)
         mags = np.zeros((nRecords*len(bands),))
@@ -317,6 +388,9 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmo
             XErr = np.zeros((nRecords*len(bands), len(inputs)))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
+                ids[i*nRecords:(i+1)*nRecords, j] = getInput(cat, inputName='id', band=band)
+                ras[i*nRecords:(i+1)*nRecords, j] = getInput(cat, inputName='ra', band=band)
+                decs[i*nRecords:(i+1)*nRecords, j] = getInput(cat, inputName='dec', band=band)
                 X[i*nRecords:(i+1)*nRecords, j] = getInput(cat, inputName=inputName, band=band)
                 if withErr:
                     XErr[i*nRecords:(i+1)*nRecords, j] = getInputErr(cat, inputName=inputName, band=band)
@@ -324,6 +398,9 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmo
             mags[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='mag', band=band)
             exts[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='ext', band=band)
     else:
+        ids = np.zeros((nRecords, len(inputs)*len(bands)), dtype=int)
+        ras = np.zeros((nRecords, len(inputs)*len(bands)))
+        decs = np.zeros((nRecords, len(inputs)*len(bands)))
         X = np.zeros((nRecords, len(inputs)*len(bands)))
         Y = np.zeros((nRecords,), dtype=bool)
         mags = np.zeros((nRecords,))
@@ -332,6 +409,9 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmo
             XErr = np.zeros((nRecords, len(inputs)*len(bands)))
         for i, band in enumerate(bands):
             for j, inputName in enumerate(inputs):
+                ids[:, i*nInputs + j] = getInput(cat, inputName='id', band=band)
+                ras[:, i*nInputs + j] = getInput(cat, inputName='ra', band=band)
+                decs[:, i*nInputs + j] = getInput(cat, inputName='dec', band=band)
                 X[:, i*nInputs + j] = getInput(cat, inputName=inputName, band=band)
                 if withErr:
                     XErr[:, i*nInputs + j] = getInputErr(cat, inputName=inputName, band=band)
@@ -352,46 +432,64 @@ def extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmo
             good = np.logical_and(good, np.isfinite(X[:,i]))
             if withErr:
                 good = np.logical_and(good, np.isfinite(XErr[:,i]))
-    X = X[good]; Y = Y[good]; mags = mags[good]; exts = exts[good]
+    ids = ids[good]; ras = ras[good]; decs = decs[good]; X = X[good]; Y = Y[good]; mags = mags[good]; exts = exts[good]
     if withErr:
         XErr = XErr[good]
     if polyOrder > 1:
         X = sgsvm.phiPol(X, polyOrder)
     if withErr:
-        return X, XErr, Y, mags, exts
+        return X, XErr, Y, ids, ras, decs, mags, exts
     else:
-        return X, Y, mags, exts
+        return X, Y, ids, ras, decs, mags, exts
 
-def extractXColY(cat, mode='colors', **kargs):
-    assert kargs['withErr'] == True
-    X, XErr, Y, mags, exts = extractXY(cat, **kargs)
-    bands = kargs['bands']
-    cNames = []
-    nColors = X.shape[1] - 1
-    XCol = np.zeros((X.shape[0], nColors))
-    XColErr = np.zeros(XCol.shape)
-    XColCov = np.zeros(XCol.shape + XCol.shape[-1:])
-    diag = np.arange(XCol.shape[-1]) # To fill variance terms
-    offDiag = diag[:-1] + 1 # To fill covariance terms
-    if mode == 'colors':
-        for i in range(nColors):
-            cNames.append(bands[i] + '-' + bands[i+1])
-            XCol[:, i] = X[:, i] - X[:, i+1]
-            XColErr[:, i] = XErr[:,i]**2 + XErr[:,i+1]**2
+def extractTrainSet(cat, mode='raw', **kargs):
+    if not 'withErr' in kargs:
+        kargs['withErr'] = False
 
-        covStack = []
-        for i in range(1, len(bands)-1):
-            cov = -XErr[:, i]**2
-            covStack.append(cov)
+    if mode in ['colors', 'rats'] and not kargs['withErr']:
+        raise ValueError('You are forced to pull out errors for mode {0}, set keyword `withErr` to True'.format(mode))
+
+    if kargs['withErr'] == True:
+        X, XErr, Y, ids, ras, decs, mags, exts = _extractXY(cat, **kargs)
+    else:
+        X, Y, ids, ras, decs, mags, exts = _extractXY(cat, **kargs)
+
+    if mode == 'raw':
+        if kargs['withErr'] == True:
+            trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
+        else:
+            trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
+    elif mode in ['colors', 'rats']:
+        bands = kargs['bands']
+        cNames = []
+        nColors = X.shape[1] - 1
+        XCol = np.zeros((X.shape[0], nColors))
+        XColErr = np.zeros(XCol.shape)
+        XColCov = np.zeros(XCol.shape + XCol.shape[-1:])
+        diag = np.arange(XCol.shape[-1]) # To fill variance terms
+        offDiag = diag[:-1] + 1 # To fill covariance terms
+        if mode == 'colors':
+            for i in range(nColors):
+                cNames.append(bands[i] + '-' + bands[i+1])
+                XCol[:, i] = X[:, i] - X[:, i+1]
+                XColErr[:, i] = XErr[:,i]**2 + XErr[:,i+1]**2
+
+            covStack = []
+            for i in range(1, len(bands)-1):
+                cov = -XErr[:, i]**2
+                covStack.append(cov)
+
         covOffDiag = np.vstack(covStack).T
 
         XColCov[:, diag, diag] = XColErr
         XColCov[:,diag[:-1], offDiag] = covOffDiag
         XColCov[:,offDiag, diag[:-1]] = covOffDiag
+
+        trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
     else:
         raise ValueError("Mode {0} not implemented".format(mode))
 
-    return XCol, XColCov, Y, mags, exts
+    return trainSet
 
 class Training(object):
 
