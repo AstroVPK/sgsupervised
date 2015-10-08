@@ -7,7 +7,8 @@ from sklearn.grid_search import GridSearchCV
 import supervisedEtl as etl
 
 def linearFit(trainingSet, n_jobs=4, magMin=None, magMax=None, **estKargs):
-    X, Y, mags = trainingSet.getTrainSet()
+    X, Y = trainingSet.getTrainSet()
+    mags = trainingSet.getTrainMags()
     good = True
     if magMin is not None:
         good = np.logical_and(good, mags > magMin)
@@ -21,7 +22,8 @@ def linearFit(trainingSet, n_jobs=4, magMin=None, magMax=None, **estKargs):
     param_grid = {'C':[1.0, 10.0, 100.0, 1.0e3]}
     clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
     clf.fit(X, Y)
-    X, Y, mags = trainingSet.getTestSet()
+    X, Y = trainingSet.getTestSet()
+    mags = trainingSet.getTestMags()
     good = True
     if magMin is not None:
         good = np.logical_and(good, mags > magMin)
@@ -37,9 +39,11 @@ def linearFit(trainingSet, n_jobs=4, magMin=None, magMax=None, **estKargs):
 
 def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=None, mode='train', **estKargs):
     if mode == 'train':
-        X, Y, mags = trainingSet.getTrainSet()
+        X, Y = trainingSet.getTrainSet()
+        mags = trainingSet.getTrainMags()
     elif mode == 'all':
-        X, Y, mags = trainingSet.getAllSet()
+        X, Y = trainingSet.getAllSet()
+        mags = trainingSet.getAllMags()
     good = True
     if magMin is not None:
         good = np.logical_and(good, mags > magMin)
@@ -73,7 +77,8 @@ def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=No
     Yshifted = Y + shiftMask
     clf.fit(X, Yshifted)
     if mode == 'train':
-        X, Y, mags = trainingSet.getTestSet()
+        X, Y = trainingSet.getTestSet()
+        mags = trainingSet.getTestMags()
         good = True
         if magMin is not None:
             good = np.logical_and(good, mags > magMin)
@@ -101,7 +106,8 @@ def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=No
     return clf
 
 def rbfFit(trainingSet, n_jobs=4, magMin=None, magMax=None):
-    X, Y, mags = trainingSet.getTrainSet()
+    X, Y = trainingSet.getTrainSet()
+    mags = trainingSet.getTrainMags()
     good = True
     if magMin is not None:
         good = np.logical_and(good, mags > magMin)
@@ -115,7 +121,8 @@ def rbfFit(trainingSet, n_jobs=4, magMin=None, magMax=None):
     param_grid = {'C':[0.1, 1.0, 10.0], 'gamma':[0.1, 1.0, 10.0]}
     clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
     clf.fit(X, Y)
-    X, Y, mags = trainingSet.getTestSet()
+    X, Y = trainingSet.getTestSet()
+    mags = trainingSet.getTestMags()
     good = True
     if magMin is not None:
         good = np.logical_and(good, mags > magMin)
