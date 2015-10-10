@@ -289,7 +289,10 @@ class TrainingSet(object):
         if standardized:
             return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
         else:
-            return self.X[self.trainIndexes], self.Y[self.trainIndexes]
+            if hasattr(self, 'XErr'):
+                return self.X[self.trainIndexes], self.XErr[self.trainIndexes], self.Y[self.trainIndexes]
+            else:
+                return self.X[self.trainIndexes], self.Y[self.trainIndexes]
 
     def getTrainIds(self):
         return self.ids[self.trainIndexes]
@@ -310,7 +313,10 @@ class TrainingSet(object):
         if standardized:
             return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
         else:
-            return self.X[self.testIndexes], self.Y[self.testIndexes]
+            if hasattr(self, 'XErr'):
+                return self.X[self.testIndexes], self.XErr[self.testIndexes], self.Y[self.testIndexes]
+            else:
+                return self.X[self.testIndexes], self.Y[self.testIndexes]
 
     def getTestIds(self):
         return self.ids[self.testIndexes]
@@ -329,9 +335,12 @@ class TrainingSet(object):
 
     def getAllSet(self, standardized=True):
         if standardized:
-            return (self.X - self.XmeanAll)/self.XstdAll, self.Y, self.mags
+            return (self.X - self.XmeanAll)/self.XstdAll, self.Y
         else:
-            return self.X, self.Y, self.mags
+            if hasattr(self, 'XErr'):
+                return self.X, self.XErr, self.Y
+            else:
+                return self.X, self.Y
 
     def getAllIds(self):
         return self.ids
@@ -416,8 +425,8 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cm
                 if withErr:
                     XErr[:, i*nInputs + j] = getInputErr(cat, inputName=inputName, band=band)
         Y = getOutput(cat, outputName=output)
-        mags = getInput(cat, inputName='mag', band=band)
-        exts = getInput(cat, inputName='ext', band=band)
+        mags = getInput(cat, inputName='mag', band='i')
+        exts = getInput(cat, inputName='ext', band='i')
     if concatBands:
         good = np.ones((nRecords*len(bands),), dtype=bool)
     else:
