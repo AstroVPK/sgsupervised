@@ -36,7 +36,7 @@ def _xdInputs(trainSet, nGauss=None, mode=None, magMin=None, magMax=None, extMax
         XErr = XErr[good]
         Y = Y[good]
         mags = mags[good]
-        exts = mags[good]
+        exts = exts[good]
     if mode == 'star':
         X = X[Y]
         XErr = XErr[Y]
