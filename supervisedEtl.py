@@ -236,7 +236,7 @@ def getOutput(cat, outputName='mu.class'):
 class TrainingSet(object):
 
     def __init__(self, X, Y, XErr=None, ids=None, ras=None, decs=None, mags=None, exts=None,
-                 testFrac=0.2, polyOrder=1):
+                 testFrac=0.2, polyOrder=1, inputs=None, bands=None, concatBands=None):
         self.nTotal = len(X)
         self.X = X
         assert len(Y) == self.nTotal
@@ -259,6 +259,21 @@ class TrainingSet(object):
         if exts is not None:
             assert len(exts) == self.nTotal
             self.exts = exts
+        if bands is not None:
+            self.bands = bands
+        if inputs is not None:
+            assert not bands is None
+            assert not concatBands is None
+            if concatBands:
+                names = inputs
+            else:
+                names = []
+                for suffix in bands:
+                    for name in inputs:
+                        names.append(name + '_' + suffix)
+            assert self.X.shape[1] == sgsvm.nterms(polyOrder, len(names)) - 1
+            self.inputs = inputs
+            self.names = names
         self.testFrac = testFrac
         self.nTest = int(testFrac*self.nTotal)
         self.nTrain = self.nTotal - self.nTest
@@ -463,12 +478,22 @@ def extractTrainSet(cat, mode='raw', **kargs):
     else:
         X, Y, ids, ras, decs, mags, exts = _extractXY(cat, **kargs)
 
+    if 'inputs' in kargs:
+        inputs = kargs['inputs']
+    else:
+        inputs = ['ext']
+
+    if 'concatBands' in kargs:
+        concatBands = kargs['concatBands']
+    else:
+        concatBands = True
+
     if mode == 'raw':
         if kargs['withErr'] == True:
             trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
         else:
             trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
-    elif mode in ['colors', 'rats']:
+    elif mode in ['colors', 'rats', 'colshape']:
         bands = kargs['bands']
         cNames = []
         nColors = X.shape[1] - 1
@@ -494,7 +519,8 @@ def extractTrainSet(cat, mode='raw', **kargs):
         XColCov[:,diag[:-1], offDiag] = covOffDiag
         XColCov[:,offDiag, diag[:-1]] = covOffDiag
 
-        trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
+        trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts, inputs=inputs,\
+                               concatBands=concatBands)
     else:
         raise ValueError("Mode {0} not implemented".format(mode))
 
