@@ -456,7 +456,7 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cm
     else:
         return X, Y, ids, ras, decs, mags, exts
 
-def extractTrainSet(cat, mode='raw', **kargs):
+def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
     if not 'withErr' in kargs:
         kargs['withErr'] = False
 
@@ -501,12 +501,20 @@ def extractTrainSet(cat, mode='raw', **kargs):
         assert len(bands) > 1
         cNames = []
         nColors = len(bands) - 1
-        XCol = np.zeros((X.shape[0], nColors))
-        XColErr = np.zeros(XCol.shape)
-        XColCov = np.zeros(XCol.shape + XCol.shape[-1:])
+        if mode == 'colors':
+            XCol = np.zeros((X.shape[0], nColors))
+            XColErr = np.zeros(XCol.shape)
+            XColCov = np.zeros(XCol.shape + XCol.shape[-1:])
+        elif mode == 'colshape':
+            XColShape = np.zeros((X.shape[0], nColors + 1))
+            XColShapeErr = np.zeros(XColShape.shape)
+            XColShapeCov = np.zeros(XColShape.shape + XColShape.shape[-1:])
+            XCol = XColShape[:, :-1]
+            XColErr = XColShapeErr[:, :-1]
+            XColCov = XColShapeCov[:, :-1, :-1]
         diag = np.arange(XCol.shape[-1]) # To fill variance terms
         offDiag = diag[:-1] + 1 # To fill covariance terms
-        if mode == 'colors':
+        if mode in ['colors', 'colshape']:
             for i in range(nColors):
                 cNames.append(bands[i] + '-' + bands[i+1])
                 idxB = names.index('mag_'+bands[i])
@@ -527,10 +535,19 @@ def extractTrainSet(cat, mode='raw', **kargs):
         XColCov[:,offDiag, diag[:-1]] = covOffDiag
 
         # TODO: Add code to be able to append more inputs given appropiate correlation coefficients
-        names = cNames
+        if mode == 'colshape':
+            idx = names.index('ext_'+extBand)
+            XColShape[:, -1] = X[:, idx]
+            XColShapeCov[:, -1, -1] = XErr[:, idx]
 
-        trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                               bands=bands, names=names)
+        names = cNames
+        if mode == 'colors':
+            trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
+                                   bands=bands, names=names)
+        elif mode == 'colshape':
+            names.append('ext_'+extBand)
+            trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
+                                   bands=bands, names=names)
     else:
         raise ValueError("Mode {0} not implemented".format(mode))
 
