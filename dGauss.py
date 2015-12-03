@@ -130,9 +130,9 @@ class XDClf(object):
         posteriorStar /= posteriorStar + posteriorGal
         return posteriorStar
 
-    def predict(self, X, XErr):
+    def predict(self, X, XErr, threshold=0.5):
         posteriorStar = self.predict_proba(X, XErr)
-        pred = np.logical_not(posteriorStar < 0.5)
+        pred = np.logical_not(posteriorStar < threshold)
         return pred
 
     def score(self, X, XErr, Y):
@@ -289,11 +289,12 @@ def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=No
     estimator = LogisticRegression(**estKargs)
     param_grid = {'C':[ 1.0e4, 1.0e5, 5.0e5, 1.0e6, 1.0e7]}
     clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
-    shiftMask = np.zeros(Y.shape, dtype=int)
-    shiftMask[Y == 0] = -1
-    Yshifted = Y.copy()
-    Yshifted = Y + shiftMask
-    clf.fit(X, Yshifted)
+    #shiftMask = np.zeros(Y.shape, dtype=int)
+    #shiftMask[Y == 0] = -1
+    #Yshifted = Y.copy()
+    #Yshifted = Y + shiftMask
+    #clf.fit(X, Yshifted)
+    clf.fit(X, Y)
     if mode == 'train':
         X, Y = trainingSet.getTestSet()
         mags = trainingSet.getTestMags()
@@ -315,11 +316,12 @@ def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=No
             X = X[good]
             Y = Y[good]
             mags = mags[good]
-        shiftMask = np.zeros(Y.shape, dtype=int)
-        shiftMask[Y == 0] = -1
-        Yshifted = Y.copy()
-        Yshifted = Y + shiftMask
-        score = clf.score(X, Yshifted)
+        #shiftMask = np.zeros(Y.shape, dtype=int)
+        #shiftMask[Y == 0] = -1
+        #Yshifted = Y.copy()
+        #Yshifted = Y + shiftMask
+        #score = clf.score(X, Yshifted)
+        score = clf.score(X, Y)
         print "score=", score
     return clf
 
