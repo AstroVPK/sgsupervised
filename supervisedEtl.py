@@ -483,6 +483,11 @@ def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
     else:
         bands = ['i']
 
+    if 'polyOrder' in kargs:
+        polyOrder = kargs['polyOrder']
+    else:
+        polyOrder = 1
+
     if concatBands:
         names = inputs
     else:
@@ -493,9 +498,9 @@ def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
 
     if mode == 'raw':
         if kargs['withErr'] == True:
-            trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
+            trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts, polyOrder=polyOrder)
         else:
-            trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts)
+            trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts, polyOrder=polyOrder)
     elif mode in ['colors', 'rats', 'colshape']:
         assert not concatBands
         assert len(bands) > 1
@@ -543,11 +548,11 @@ def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
         names = cNames
         if mode == 'colors':
             trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                   bands=bands, names=names)
+                                   bands=bands, names=names, polyOrder=polyOrder)
         elif mode == 'colshape':
             names.append('ext_'+extBand)
             trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                   bands=bands, names=names)
+                                   bands=bands, names=names, polyOrder=polyOrder)
     else:
         raise ValueError("Mode {0} not implemented".format(mode))
 
@@ -632,8 +637,8 @@ class Training(object):
 
         print polyStr
 
-    def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-',
-                   magRange=None, xlabel='Magnitude', ylabel='Scores'):
+    def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
+                   magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel=''):
         if sType == 'test':
             mags = self.trainingSet.mags[self.trainingSet.testIndexes]
         elif sType == 'train':
@@ -679,21 +684,27 @@ class Training(object):
             fig = plt.figure()
             axGal = fig.add_subplot(1, 2, 1)
             axStar = fig.add_subplot(1, 2, 2)
-            axGal.set_title('Galaxies')
-            axStar.set_title('Stars')
-            axGal.set_xlabel(xlabel)
-            axGal.set_ylabel(ylabel)
-            axStar.set_xlabel(xlabel)
-            axStar.set_ylabel(ylabel)
+            axGal.set_title('Galaxies', fontsize=fontSize)
+            axStar.set_title('Stars', fontsize=fontSize)
+            axGal.set_xlabel(xlabel, fontsize=fontSize)
+            axGal.set_ylabel(ylabel, fontsize=fontSize)
+            axStar.set_xlabel(xlabel, fontsize=fontSize)
+            axStar.set_ylabel(ylabel, fontsize=fontSize)
             axGal.set_ylim((0.0, 1.0))
             axStar.set_ylim((0.0, 1.0))
         else:
             axGal, axStar = fig.get_axes()
 
-        axGal.step(magsCenters, complGals, color='red', linestyle=linestyle)
-        axGal.step(magsCenters, purityGals, color='blue', linestyle=linestyle)
-        axStar.step(magsCenters, complStars, color='red', linestyle=linestyle)
-        axStar.step(magsCenters, purityStars, color='blue', linestyle=linestyle)
+        for ax in fig.get_axes():
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+
+        axGal.step(magsCenters, complGals, color='red', linestyle=linestyle, label=legendLabel + ' Completeness')
+        axGal.step(magsCenters, purityGals, color='blue', linestyle=linestyle, label=legendLabel + ' Purity')
+        axStar.step(magsCenters, complStars, color='red', linestyle=linestyle, label=legendLabel + ' Completeness')
+        axStar.step(magsCenters, purityStars, color='blue', linestyle=linestyle, label=legendLabel + ' Purity')
 
         return fig
 
@@ -823,11 +834,13 @@ class Training(object):
                 for i in range(len(arr)):
                     ys[i] = F(arr[i])
                 plt.plot(arr, ys)
+                plt.title("varRange={0}".format(fixedVal))
+                plt.show()
                 raise e
 
     def plotBoundary(self, rangeIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
-                     xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.02,
-                     withTrueLabels=True, fontSize=18):
+                     xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.03,
+                     withTrueLabels=True, fontSize=18, asLogX=False):
         assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
 
         if rangeIndex == 0:
@@ -840,7 +853,11 @@ class Training(object):
         if xRange is None:
             xRange = (self.trainingSet.X[:,rangeIndex].min(),self.trainingSet.X[:,rangeIndex].max())
 
-        xGrid = np.linspace(xRange[0], xRange[1], num=nPoints)
+        if asLogX:
+            xGrid = np.linspace(np.log10(xRange[0]), np.log10(xRange[1]), num=nPoints)
+            xGrid = np.power(10.0, xGrid)
+        else:
+            xGrid = np.linspace(xRange[0], xRange[1], num=nPoints)
         yGrid = np.zeros(xGrid.shape)
 
         for i, fixedVal in enumerate(xGrid):
@@ -852,17 +869,22 @@ class Training(object):
         else:
             ax = fig.get_axes()[0]
 
+        if asLogX:
+            plotting = ax.semilogx
+        else:
+            plotting = ax.plot
+
         if overPlotData:
             if withTrueLabels:
                 nSample = int(frac*len(self.trainingSet.X))
                 idxSample = np.random.choice(len(self.trainingSet.X), nSample, replace=False)
                 for i in idxSample:
                     if self.trainingSet.Y[i]:
-                        ax.plot(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='blue')
+                        plotting(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='blue')
                     else:
-                        ax.plot(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='red')
+                        plotting(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='red')
             else:
-                Xtest, Ytest, magTest = self.trainingSet.getTestSet()
+                Xtest, Ytest = self.trainingSet.getTestSet()
                 testIndexes = self.trainingSet.testIndexes
                 Z = self.clf.predict_proba(Xtest)[:,1]
                 sc = ax.scatter(self.trainingSet.X[testIndexes, rangeIndex], self.trainingSet.X[testIndexes, varIndex], c=Z, marker='.', s=2, edgecolors="none")
@@ -870,7 +892,7 @@ class Training(object):
                 cb.set_label('P(Star)', fontsize=fontSize)
                 cb.ax.tick_params(labelsize=fontSize)
 
-        ax.plot(xGrid, yGrid, color='black')
+        plotting(xGrid, yGrid, color='black')
 
         if xlim is not None:
             ax.set_xlim(xlim)
@@ -886,4 +908,38 @@ class Training(object):
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
 
+        return fig
+
+    def plotPMap(self, xRange, yRange, xN, yN, asLogX=False, fontSize=18, xlabel=None, ylabel=None, cbLabel=None):
+        if asLogX:
+            xx, yy = np.meshgrid(np.linspace(np.log10(xRange[0]), np.log10(xRange[1]), num=xN),
+                                 np.linspace(yRange[0], yRange[1], num=yN))
+            xx = np.power(10.0, xx)
+        else:
+            xx, yy = np.meshgrid(np.linspace(xRange[0], xRange[1], num=xN),
+                                 np.linspace(yRange[0], yRange[1], num=yN))
+        X = np.vstack((xx.flatten(), yy.flatten())).T
+        if self.trainingSet.polyOrder > 1:
+            X = sgsvm.phiPol(X, self.trainingSet.polyOrder)
+        X = self.trainingSet.applyPreTestTransform(X)
+        Z = self.clf.predict_proba(X)[:,1]
+        zz = Z.reshape(xx.shape)
+        fig = plt.figure()
+        plt.pcolor(xx, yy, zz)
+        cb = plt.colorbar()
+        if xlabel is not None:
+            plt.xlabel(xlabel, fontsize=fontSize)
+        if ylabel is not None:
+            plt.ylabel(ylabel, fontsize=fontSize)
+        if cbLabel is not None:
+            cb.set_label(cbLabel, fontsize=fontSize)
+        ax = fig.get_axes()[0]
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize-2)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize-2)
+        if asLogX:
+            ax.set_xscale('log')
+        ax.set_xlim(xRange)
+        ax.set_ylim(yRange)
         return fig
