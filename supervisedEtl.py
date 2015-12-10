@@ -236,7 +236,7 @@ def getOutput(cat, outputName='mu.class'):
 class TrainingSet(object):
 
     def __init__(self, X, Y, XErr=None, ids=None, ras=None, decs=None, mags=None, exts=None,
-                 testFrac=0.2, polyOrder=1, bands=None, names=None):
+                 snrs=None, testFrac=0.2, polyOrder=1, bands=None, names=None):
         self.nTotal = len(X)
         self.X = X
         assert len(Y) == self.nTotal
@@ -261,6 +261,8 @@ class TrainingSet(object):
             self.exts = exts
         if bands is not None:
             self.bands = bands
+        if snrs is not None:
+            self.snrs = snrs
         if names is not None:
             assert self.X.shape[1] == sgsvm.nterms(polyOrder, len(names)) - 1
             self.names = names
@@ -378,7 +380,7 @@ class TrainingSet(object):
         return fig
 
 def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cmodel', extsType='cmodel', concatBands=True,
-              onlyFinite=True, polyOrder=1, withErr=False):
+              onlyFinite=True, polyOrder=1, withErr=False, snrType='snrPsf'):
     """
     Load `inputs` from `cat` into `X` and   `output` to `Y`. If onlyFinite is True, then
     throw away all rows with one or more non-finite entries.
@@ -398,6 +400,7 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cm
         Y = np.zeros((nRecords*len(bands),), dtype=bool)
         mags = np.zeros((nRecords*len(bands),))
         exts = np.zeros((nRecords*len(bands),))
+        snrs = np.zeros((nRecords*len(bands),))
         if withErr:
             XErr = np.zeros((nRecords*len(bands), len(inputs)))
         for i, band in enumerate(bands):
@@ -411,6 +414,7 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cm
             Y[i*nRecords:(i+1)*nRecords] = getOutput(cat, outputName=output)
             mags[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='mag', band=band)
             exts[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='ext', band=band)
+            snrs[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName=snrType, band=band)
     else:
         ids = np.zeros((nRecords, len(inputs)*len(bands)), dtype=int)
         ras = np.zeros((nRecords, len(inputs)*len(bands)))
@@ -419,6 +423,7 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cm
         Y = np.zeros((nRecords,), dtype=bool)
         mags = np.zeros((nRecords,))
         exts = np.zeros((nRecords,))
+        snrs = np.zeros((nRecords,))
         if withErr:
             XErr = np.zeros((nRecords, len(inputs)*len(bands)))
         for i, band in enumerate(bands):
@@ -432,6 +437,7 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cm
         Y = getOutput(cat, outputName=output)
         mags = getInput(cat, inputName='mag', band='i')
         exts = getInput(cat, inputName='ext', band='i')
+        snrs = getInput(cat, inputName=snrType, band='i')
     if concatBands:
         good = np.ones((nRecords*len(bands),), dtype=bool)
     else:
@@ -446,17 +452,17 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='cm
             good = np.logical_and(good, np.isfinite(X[:,i]))
             if withErr:
                 good = np.logical_and(good, np.isfinite(XErr[:,i]))
-    ids = ids[good]; ras = ras[good]; decs = decs[good]; X = X[good]; Y = Y[good]; mags = mags[good]; exts = exts[good]
+    ids = ids[good]; ras = ras[good]; decs = decs[good]; X = X[good]; Y = Y[good]; mags = mags[good]; exts = exts[good]; snrs = snrs[good]
     if withErr:
         XErr = XErr[good]
     if polyOrder > 1:
         X = sgsvm.phiPol(X, polyOrder)
     if withErr:
-        return X, XErr, Y, ids, ras, decs, mags, exts
+        return X, XErr, Y, ids, ras, decs, mags, exts, snrs
     else:
-        return X, Y, ids, ras, decs, mags, exts
+        return X, Y, ids, ras, decs, mags, exts, snrs
 
-def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
+def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
     if not 'withErr' in kargs:
         kargs['withErr'] = False
 
@@ -464,9 +470,9 @@ def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
         raise ValueError('You are forced to pull out errors for mode {0}, set keyword `withErr` to True'.format(mode))
 
     if kargs['withErr'] == True:
-        X, XErr, Y, ids, ras, decs, mags, exts = _extractXY(cat, **kargs)
+        X, XErr, Y, ids, ras, decs, mags, exts, snrs = _extractXY(cat, **kargs)
     else:
-        X, Y, ids, ras, decs, mags, exts = _extractXY(cat, **kargs)
+        X, Y, ids, ras, decs, mags, exts, snrs = _extractXY(cat, **kargs)
 
     if 'inputs' in kargs:
         inputs = kargs['inputs']
@@ -498,9 +504,9 @@ def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
 
     if mode == 'raw':
         if kargs['withErr'] == True:
-            trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts, polyOrder=polyOrder)
+            trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts, snrs=snrs, polyOrder=polyOrder)
         else:
-            trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts, polyOrder=polyOrder)
+            trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts, snrs=snrs, polyOrder=polyOrder)
     elif mode in ['colors', 'rats', 'colshape']:
         assert not concatBands
         assert len(bands) > 1
@@ -522,14 +528,14 @@ def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
         if mode in ['colors', 'colshape']:
             for i in range(nColors):
                 cNames.append(bands[i] + '-' + bands[i+1])
-                idxB = names.index('mag_'+bands[i])
-                idxR = names.index('mag_'+bands[i+1])
+                idxB = names.index(colType + '_'+bands[i])
+                idxR = names.index(colType + '_'+bands[i+1])
                 XCol[:, i] = X[:, idxB] - X[:, idxR]
                 XColErr[:, i] = XErr[:,idxB]**2 + XErr[:,idxR]**2
 
             covStack = []
             for i in range(1, len(bands)-1):
-                idx = names.index('mag_'+bands[i])
+                idx = names.index(colType + '_' + bands[i])
                 cov = -XErr[:, idx]**2
                 covStack.append(cov)
 
@@ -548,11 +554,11 @@ def extractTrainSet(cat, mode='raw', extBand='i', **kargs):
         names = cNames
         if mode == 'colors':
             trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                   bands=bands, names=names, polyOrder=polyOrder)
+                                   snrs=snrs, bands=bands, names=names, polyOrder=polyOrder)
         elif mode == 'colshape':
             names.append('ext_'+extBand)
             trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                   bands=bands, names=names, polyOrder=polyOrder)
+                                   snrs=snrs, bands=bands, names=names, polyOrder=polyOrder)
     else:
         raise ValueError("Mode {0} not implemented".format(mode))
 
