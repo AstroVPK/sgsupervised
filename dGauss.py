@@ -224,9 +224,13 @@ def getCVParamsAndy(trainSet, magMin=18.0, magMax=22.0, extMax=0.4,
         f.write("\n")
         f.write(scores.__repr__())
 
-def linearFit(trainingSet, n_jobs=4, magMin=None, magMax=None, **estKargs):
-    X, Y = trainingSet.getTrainSet()
-    mags = trainingSet.getTrainMags()
+def linearFit(trainingSet, n_jobs=4, magMin=None, magMax=None, mode='train', **estKargs):
+    if mode == 'train':
+        X, Y = trainingSet.getTrainSet()
+        mags = trainingSet.getTrainMags()
+    elif mode == 'all':
+        X, Y = trainingSet.getAllSet()
+        mags = trainingSet.getAllMags()
     good = True
     if magMin is not None:
         good = np.logical_and(good, mags > magMin)
