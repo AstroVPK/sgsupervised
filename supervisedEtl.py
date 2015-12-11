@@ -300,6 +300,42 @@ class TrainingSet(object):
         self.XmeanAll = np.mean(self.X, axis=0)
         self.XstdAll = np.std(self.X, axis=0)
 
+    def genTrainSubsetByCols(self, cols):
+        assert isinstance(cols, list)
+        Xsub = self.X[:, cols]
+        Ysub = self.Y
+        kargsSub = {}
+        if hasattr(self, 'XErr'):
+            kargsSub['XErr'] = self.XErr[:, np.ix_(cols, cols)]
+        if hasattr(self, 'ids'):
+            kargsSub['ids'] = self.ids
+        if hasattr(self, 'ras'):
+            kargsSub['ras'] = self.ras
+        if hasattr(self, 'decs'):
+            kargsSub['decs'] = self.decs
+        if hasattr(self, 'mags'):
+            kargsSub['mags'] = self.mags
+        if hasattr(self, 'exts'):
+            kargsSub['exts'] = self.exts
+        if hasattr(self, 'names'):
+            kargsSub['names'] = []
+            for i in cols:
+                kargsSub['names'].append(self.names[i])
+        if hasattr(self, 'bands'):
+            if len(self.bands) == 1:
+                kargsSub['bands'] = self.bands
+            else:
+                bandsSet = set()
+                for name in kargsSub['names']:
+                    if name[-1] in ['g', 'r', 'i', 'z', 'y']:
+                        bandsSet.add(name[-1])
+                kargsSub['bands'] = list(bandsSet)
+        if hasattr(self, 'snrs'):
+            kargsSub['snrs'] = self.snrs
+        if hasattr(self, 'seeings'):
+            kargsSub['seeings'] = self.seeings
+        return TrainingSet(Xsub, Ysub, **kargsSub)
+
     def getTrainSet(self, standardized=True):
         if standardized:
             return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
