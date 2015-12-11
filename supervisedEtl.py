@@ -300,40 +300,57 @@ class TrainingSet(object):
         self.XmeanAll = np.mean(self.X, axis=0)
         self.XstdAll = np.std(self.X, axis=0)
 
-    def genTrainSubsetByCols(self, cols):
-        assert isinstance(cols, list)
-        Xsub = self.X[:, cols]
-        Ysub = self.Y
+    def genTrainSubset(self, cuts=None, cols=None):
+        good = np.ones(self.Y.shape, dtype=bool)
         kargsSub = {}
-        if hasattr(self, 'XErr'):
-            kargsSub['XErr'] = self.XErr[:, np.ix_(cols, cols)]
-        if hasattr(self, 'ids'):
-            kargsSub['ids'] = self.ids
-        if hasattr(self, 'ras'):
-            kargsSub['ras'] = self.ras
-        if hasattr(self, 'decs'):
-            kargsSub['decs'] = self.decs
-        if hasattr(self, 'mags'):
-            kargsSub['mags'] = self.mags
-        if hasattr(self, 'exts'):
-            kargsSub['exts'] = self.exts
-        if hasattr(self, 'names'):
-            kargsSub['names'] = []
-            for i in cols:
-                kargsSub['names'].append(self.names[i])
-        if hasattr(self, 'bands'):
-            if len(self.bands) == 1:
+        if cuts is not None:
+            assert isinstance(cuts, dict)
+            for idx in cuts:
+                if cuts[idx][0] is not None:
+                    good = np.logical_and(good, self.X[:,idx] > cuts[idx][0])
+                if cuts[idx][1] is not None:
+                    good = np.logical_and(good, self.X[:,idx] < cuts[idx][1])
+        if cols is not None:
+            assert isinstance(cols, list)
+            Xsub = self.X[:, cols][good]
+            if hasattr(self, 'XErr'):
+                kargsSub['XErr'] = self.XErr[:, np.ix_(cols, cols)][good]
+            if hasattr(self, 'names'):
+                kargsSub['names'] = []
+                for i in cols:
+                    kargsSub['names'].append(self.names[i])
+            if hasattr(self, 'bands'):
+                if len(self.bands) == 1:
+                    kargsSub['bands'] = self.bands
+                else:
+                    bandsSet = set()
+                    for name in kargsSub['names']:
+                        if name[-1] in ['g', 'r', 'i', 'z', 'y']:
+                            bandsSet.add(name[-1])
+                    kargsSub['bands'] = list(bandsSet)
+        else:
+            Xsub = self.X[good]
+            if hasattr(self, 'XErr'):
+                kargsSub['XErr'] = self.XErr[good]
+            if hasattr(self, 'names'):
+                kargsSub['names'] = self.names
+            if hasattr(self, 'bands'):
                 kargsSub['bands'] = self.bands
-            else:
-                bandsSet = set()
-                for name in kargsSub['names']:
-                    if name[-1] in ['g', 'r', 'i', 'z', 'y']:
-                        bandsSet.add(name[-1])
-                kargsSub['bands'] = list(bandsSet)
+        Ysub = self.Y[good]
+        if hasattr(self, 'ids'):
+            kargsSub['ids'] = self.ids[good]
+        if hasattr(self, 'ras'):
+            kargsSub['ras'] = self.ras[good]
+        if hasattr(self, 'decs'):
+            kargsSub['decs'] = self.decs[good]
+        if hasattr(self, 'mags'):
+            kargsSub['mags'] = self.mags[good]
+        if hasattr(self, 'exts'):
+            kargsSub['exts'] = self.exts[good]
         if hasattr(self, 'snrs'):
-            kargsSub['snrs'] = self.snrs
+            kargsSub['snrs'] = self.snrs[good]
         if hasattr(self, 'seeings'):
-            kargsSub['seeings'] = self.seeings
+            kargsSub['seeings'] = self.seeings[good]
         return TrainingSet(Xsub, Ysub, **kargsSub)
 
     def getTrainSet(self, standardized=True):
@@ -893,9 +910,7 @@ class Training(object):
                 plt.show()
                 raise e
 
-    def plotBoundary(self, rangeIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
-                     xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.03,
-                     withTrueLabels=True, fontSize=18, asLogX=False):
+    def getDecBoundary(self, rangeIndex, xRange=None, nPoints=100, yRange=None, asLogX=False):
         assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
 
         if rangeIndex == 0:
@@ -917,6 +932,14 @@ class Training(object):
 
         for i, fixedVal in enumerate(xGrid):
             yGrid[i] = self.findZero(rangeIndex, fixedVal, zeroRange=yRange)
+
+        return xGrid, yGrid
+
+    def plotBoundary(self, rangeIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
+                     xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.03,
+                     withTrueLabels=True, fontSize=18, asLogX=False):
+
+        xGrid, yGrid = self.getDecBoundary(rangeIndex, xRange=xRange, nPoints=nPoints, yRange=yRange, asLogX=asLogX)
 
         if fig is None:
             fig = plt.figure()
