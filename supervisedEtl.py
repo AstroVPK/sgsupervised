@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
@@ -636,7 +637,12 @@ class Training(object):
         self.trainingSet = trainingSet
         self.clf = clf
         self.preFit = preFit
-        self._computePhysicalFit()
+        if hasattr(self.clf, 'best_estimator_'):
+            self.estimator = self.clf.best_estimator_
+        else:
+            self.estimator = self.clf
+        if hasattr(self.estimator, 'coef_'):
+            self._computePhysicalFit()
 
     def predictTrainLabels(self):
         X = self.trainingSet.getTrainSet()[0]
@@ -666,48 +672,54 @@ class Training(object):
                         np.sum(estimator.coef_[0]*self.trainingSet.XmeanAll/self.trainingSet.XstdAll)
 
     def printPhysicalFit(self, normalized=False):
-        if normalized:
-            print "Normalized coeff:", self.coeffPhys/self.coeffPhys[0]
-            print "Normalized intercept:", self.interceptPhys/self.coeffPhys[0]
+        if hasattr(self.estimator, 'coef_'):
+            if normalized:
+                print "Normalized coeff:", self.coeffPhys/self.coeffPhys[0]
+                print "Normalized intercept:", self.interceptPhys/self.coeffPhys[0]
+            else:
+                print "coeff:", self.coeffPhys
+                print "intercept:", self.interceptPhys
         else:
-            print "coeff:", self.coeffPhys
-            print "intercept:", self.interceptPhys
+            print "WARNING: I can't print the physical fit of a {0}".format(self.estimator.__class__)
 
     def printPolynomial(self, names):
-        polyOrder = self.trainingSet.polyOrder
-        assert self.trainingSet.X.shape[1] == sgsvm.nterms(polyOrder, len(names)) - 1
-        nTerms = len(names)
+        if hasattr(self.estimator, 'coef_'):
+            polyOrder = self.trainingSet.polyOrder
+            assert self.trainingSet.X.shape[1] == sgsvm.nterms(polyOrder, len(names)) - 1
+            nTerms = len(names)
 
-        polyStr = "{0} ".format(self.interceptPhys[0])
+            polyStr = "{0} ".format(self.interceptPhys[0])
 
-        count = 0
-        for i in range(len(names)):
-            if self.coeffPhys[i] < 0.0:
-                polyStr += "{0}*{1} ".format(self.coeffPhys[i], names[i])
-            else:
-                polyStr += "+{0}*{1} ".format(self.coeffPhys[i], names[i])
-            count += 1
+            count = 0
+            for i in range(len(names)):
+                if self.coeffPhys[i] < 0.0:
+                    polyStr += "{0}*{1} ".format(self.coeffPhys[i], names[i])
+                else:
+                    polyStr += "+{0}*{1} ".format(self.coeffPhys[i], names[i])
+                count += 1
 
-        if polyOrder >= 2:
-            for i in range(nTerms):
-                for j in range(i, nTerms):
-                    if self.coeffPhys[count] < 0.0:
-                        polyStr += "{0}*{1}*{2} ".format(self.coeffPhys[count], names[i], names[j])
-                    else:
-                        polyStr += "+{0}*{1}*{2} ".format(self.coeffPhys[count], names[i], names[j])
-                    count += 1
-
-        if polyOrder >= 3:
-            for i in range(nTerms):
-                for j in range(i, nTerms):
-                    for k in range(j, nTerms):
+            if polyOrder >= 2:
+                for i in range(nTerms):
+                    for j in range(i, nTerms):
                         if self.coeffPhys[count] < 0.0:
-                            polyStr += "{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                            polyStr += "{0}*{1}*{2} ".format(self.coeffPhys[count], names[i], names[j])
                         else:
-                            polyStr += "+{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                            polyStr += "+{0}*{1}*{2} ".format(self.coeffPhys[count], names[i], names[j])
                         count += 1
 
-        print polyStr
+            if polyOrder >= 3:
+                for i in range(nTerms):
+                    for j in range(i, nTerms):
+                        for k in range(j, nTerms):
+                            if self.coeffPhys[count] < 0.0:
+                                polyStr += "{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                            else:
+                                polyStr += "+{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                            count += 1
+
+            print polyStr
+        else:
+            print "WARNING: I can't print the physical fit of a {0}".format(self.estimator.__class__)
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
                    magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel=''):
@@ -803,7 +815,7 @@ class Training(object):
         else:
             raise ValueError("Transform of type {0} not implemented".format(tType))
 
-    def _getF(self, fixedIndex, fixedVal, varIndex):
+    def _getFCoef(self, fixedIndex, fixedVal, varIndex):
         nTerms = sgsvm.nterms(self.trainingSet.polyOrder, 2)
         vecRoot = np.zeros((2,))
         vecRoot[fixedIndex] = fixedVal
@@ -846,7 +858,19 @@ class Training(object):
             return np.dot(vecCoeff, vec)
         return F
 
-    def findZero(self, fixedIndex, fixedVal, zeroRange=None, chooseSol=1):
+    def _getF(self, fixedIndex, fixedVal, varIndex):
+        Xphys = np.zeros((1,2))
+        Xphys[0, fixedIndex] = fixedVal
+        def F(x):
+            Xphys[0, varIndex] = x
+            if self.preFit:
+                X = self.trainingSet.applyPreTestTransform(Xphys)
+            else:
+                X = self.trainingSet.applyPostTestTransform(Xphys)
+            return self.estimator.decision_function(X)
+        return F
+
+    def findZero(self, fixedIndex, fixedVal, zeroRange=None, chooseSol=1, fallbackRange=None):
         assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
         assert chooseSol in [0, 1]
 
@@ -859,58 +883,111 @@ class Training(object):
 
         if zeroRange is None:
             zeroRange = (self.trainingSet.X[:,varIndex].min(),self.trainingSet.X[:,varIndex].max())
+        
+        if hasattr(self.clf, 'best_estimator_'):
+            estimator = self.clf.best_estimator_
+        else:
+            estimator = self.clf
 
-        if self.trainingSet.polyOrder == 1:
-            sol = (-self.coeffPhys[fixedIndex]*fixedVal - self.interceptPhys[0])/self.coeffPhys[varIndex]
-            if sol < zeroRange[0] or sol > zeroRange[1]:
-                print "WARNING: Solution outside of range {0}".format(zeroRange)
-            return sol
-        elif self.trainingSet.polyOrder == 2:
-            if varIndex == 0:
-                A = self.coeffPhys[2]
-                B = self.coeffPhys[0] + self.coeffPhys[3]*fixedVal
-                C = self.coeffPhys[1]*fixedVal + self.coeffPhys[4]*fixedVal**2 + self.interceptPhys[0]
-            elif varIndex == 1:
-                A = self.coeffPhys[4]
-                B = self.coeffPhys[1] + self.coeffPhys[3]*fixedVal
-                C = self.coeffPhys[0]*fixedVal + self.coeffPhys[2]*fixedVal**2 + self.interceptPhys[0]
-            discr = np.sqrt(B**2 - 4*A*C)
-            sol1 = (-B + discr)/(2*A); sol2 = (-B - discr)/(2*A)
-            if sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
-                return sol1
-            elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
-                return sol2
-            elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
-                print "WARNING: No solution was found in the specified interval, I'll return the one that's closer"
-                d1 = min(np.absolute(sol1 - zeroRange[0]), np.absolute(sol1 - zeroRange[1]))
-                d2 = min(np.absolute(sol2 - zeroRange[0]), np.absolute(sol2 - zeroRange[1]))
+        if hasattr(estimator, 'coef_'):
+            if self.trainingSet.polyOrder == 1:
+                sol = (-self.coeffPhys[fixedIndex]*fixedVal - self.interceptPhys[0])/self.coeffPhys[varIndex]
+                if sol < zeroRange[0] or sol > zeroRange[1]:
+                    print "WARNING: Solution outside of range {0}".format(zeroRange)
+                return sol
+            elif self.trainingSet.polyOrder == 2:
+                if varIndex == 0:
+                    A = self.coeffPhys[2]
+                    B = self.coeffPhys[0] + self.coeffPhys[3]*fixedVal
+                    C = self.coeffPhys[1]*fixedVal + self.coeffPhys[4]*fixedVal**2 + self.interceptPhys[0]
+                elif varIndex == 1:
+                    A = self.coeffPhys[4]
+                    B = self.coeffPhys[1] + self.coeffPhys[3]*fixedVal
+                    C = self.coeffPhys[0]*fixedVal + self.coeffPhys[2]*fixedVal**2 + self.interceptPhys[0]
+                discr = np.sqrt(B**2 - 4*A*C)
+                sol1 = (-B + discr)/(2*A); sol2 = (-B - discr)/(2*A)
+                if sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
+                    return sol1
+                elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
+                    return sol2
+                elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
+                    print "WARNING: No solution was found in the specified interval, I'll return the one that's closer"
+                    d1 = min(np.absolute(sol1 - zeroRange[0]), np.absolute(sol1 - zeroRange[1]))
+                    d2 = min(np.absolute(sol2 - zeroRange[0]), np.absolute(sol2 - zeroRange[1]))
 
-                if d1 <= d2:
-                    return sol1
-                elif d2 < d1:
-                    return sol2
-            elif sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
-                print "WARNING: Two solutions were found in the specified interval, I'll return solution {0}".format(chooseSol)
-                if chooseSol == 1:
-                    return sol1
-                elif chooseSol == 2:
-                    return sol2
-        elif self.trainingSet.polyOrder > 2:
+                    if d1 <= d2:
+                        return sol1
+                    elif d2 < d1:
+                        return sol2
+                elif sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
+                    print "WARNING: Two solutions were found in the specified interval, I'll return solution {0}".format(chooseSol)
+                    if chooseSol == 1:
+                        return sol1
+                    elif chooseSol == 2:
+                        return sol2
+            elif self.trainingSet.polyOrder > 2:
+                F = self._getFCoef(fixedIndex, fixedVal, varIndex)
+                try:
+                    return brentq(F, zeroRange[0], zeroRange[1])
+                except ValueError as e:
+                    if fallbackRange is not None:
+                        try:
+                            return brentq(F, fallbackRange[0], fallbackRange[1])
+                        except ValueError as e:
+                            figT = plt.figure()
+                            arr = np.linspace(zeroRange[0], zeroRange[1], num=100)
+                            ys = np.zeros(arr.shape)
+                            for i in range(len(arr)):
+                                ys[i] = F(arr[i])
+                            plt.plot(arr, ys)
+                            plt.title("varRange={0}".format(fixedVal))
+                            if os.environ.get('DISPLAY') is not None:
+                                plt.show()
+                            raise e
+                    else:
+                        figT = plt.figure()
+                        arr = np.linspace(zeroRange[0], zeroRange[1], num=100)
+                        ys = np.zeros(arr.shape)
+                        for i in range(len(arr)):
+                            ys[i] = F(arr[i])
+                        plt.plot(arr, ys)
+                        plt.title("varRange={0}".format(fixedVal))
+                        if os.environ.get('DISPLAY') is not None:
+                            plt.show()
+                        raise e
+        else:
             F = self._getF(fixedIndex, fixedVal, varIndex)
             try:
                 return brentq(F, zeroRange[0], zeroRange[1])
             except ValueError as e:
-                figT = plt.figure()
-                arr = np.linspace(zeroRange[0], zeroRange[1], num=100)
-                ys = np.zeros(arr.shape)
-                for i in range(len(arr)):
-                    ys[i] = F(arr[i])
-                plt.plot(arr, ys)
-                plt.title("varRange={0}".format(fixedVal))
-                plt.show()
-                raise e
+                if fallbackRange is not None:
+                    try:
+                        return brentq(F, fallbackRange[0], fallbackRange[1])
+                    except ValueError as e:
+                        figT = plt.figure()
+                        arr = np.linspace(zeroRange[0], zeroRange[1], num=100)
+                        ys = np.zeros(arr.shape)
+                        for i in range(len(arr)):
+                            ys[i] = F(arr[i])
+                        plt.plot(arr, ys)
+                        plt.title("varRange={0}".format(fixedVal))
+                        if os.environ.get('DISPLAY') is not None:
+                            plt.show()
+                        raise e
+                else:
+                    figT = plt.figure()
+                    arr = np.linspace(zeroRange[0], zeroRange[1], num=100)
+                    ys = np.zeros(arr.shape)
+                    for i in range(len(arr)):
+                        ys[i] = F(arr[i])
+                    plt.plot(arr, ys)
+                    plt.title("varRange={0}".format(fixedVal))
+                    if os.environ.get('DISPLAY') is not None:
+                        plt.show()
+                    raise e
 
-    def getDecBoundary(self, rangeIndex, xRange=None, nPoints=100, yRange=None, asLogX=False):
+    def getDecBoundary(self, rangeIndex, xRange=None, nPoints=100, yRange=None, asLogX=False,
+                       fallbackRange=None):
         assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
 
         if rangeIndex == 0:
@@ -931,7 +1008,7 @@ class Training(object):
         yGrid = np.zeros(xGrid.shape)
 
         for i, fixedVal in enumerate(xGrid):
-            yGrid[i] = self.findZero(rangeIndex, fixedVal, zeroRange=yRange)
+            yGrid[i] = self.findZero(rangeIndex, fixedVal, zeroRange=yRange, fallbackRange=fallbackRange)
 
         return xGrid, yGrid
 
