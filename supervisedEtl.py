@@ -859,7 +859,9 @@ class Training(object):
         return F
 
     def _getF(self, fixedIndex, fixedVal, varIndex):
-        Xphys = np.zeros((1,2))
+        assert self.trainingSet.polyOrder == 1
+        # TODO: Make it possible to use this function for polyOrder > 1
+        Xphys = np.zeros((1, self.trainingSet.X.shape[1]))
         Xphys[0, fixedIndex] = fixedVal
         def F(x):
             Xphys[0, varIndex] = x
@@ -986,16 +988,17 @@ class Training(object):
                         plt.show()
                     raise e
 
-    def getDecBoundary(self, rangeIndex, xRange=None, nPoints=100, yRange=None, asLogX=False,
-                       fallbackRange=None):
-        assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
+    def getDecBoundary(self, rangeIndex, varIndex, fixedIndexes=None, fixedVals=None, xRange=None, 
+                       nPoints=100, yRange=None, asLogX=False, fallbackRange=None):
 
-        if rangeIndex == 0:
-            varIndex = 1
-        elif rangeIndex == 1:
-            varIndex = 0
+        if self.trainingSet.X.shape[1] > sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1:
+            if fixedIndexes is None or fixedVals is None:
+                raise ValueError("If there are more than two inputs I need to know the indexes and values of fixed variables.")
+            fixedIndexes.append(rangeIndex)
+            fixedVals.append(0.0)
         else:
-            raise ValueError('I can only take indexes in [0, 1]')
+            assert fixedIndexes is None
+            assert fixedVals is None
 
         if xRange is None:
             xRange = (self.trainingSet.X[:,rangeIndex].min(),self.trainingSet.X[:,rangeIndex].max())
@@ -1008,7 +1011,11 @@ class Training(object):
         yGrid = np.zeros(xGrid.shape)
 
         for i, fixedVal in enumerate(xGrid):
-            yGrid[i] = self.findZero(rangeIndex, fixedVal, zeroRange=yRange, fallbackRange=fallbackRange)
+            if fixedIndexes is not None and fixedVals is not None:
+                fixedVals[-1] = fixedVal
+                yGrid[i] = self.findZero(fixedIndexes, fixedVals, zeroRange=yRange, fallbackRange=fallbackRange)
+            else:
+                yGrid[i] = self.findZero(rangeIndex, fixedVal, zeroRange=yRange, fallbackRange=fallbackRange)
 
         return xGrid, yGrid
 
@@ -1016,7 +1023,7 @@ class Training(object):
                      xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.03,
                      withTrueLabels=True, fontSize=18, asLogX=False):
 
-        xGrid, yGrid = self.getDecBoundary(rangeIndex, xRange=xRange, nPoints=nPoints, yRange=yRange, asLogX=asLogX)
+        xGrid, yGrid = self.getDecBoundary(rangeIndex, varIndex, xRange=xRange, nPoints=nPoints, yRange=yRange, asLogX=asLogX)
 
         if fig is None:
             fig = plt.figure()
