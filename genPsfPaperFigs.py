@@ -204,6 +204,61 @@ def equalShapeDifferentBands(snrType='snrPsf', extType='ext', ylim=None, underSa
 
     return fig
 
+def equalShapeDifferentBandsWSeeing(snrType='snrPsf', extType='ext', ylim=None, underSample=None, size=1, fontSize=14,
+                                    xlabel=None, ylabel=None, doTrain=False):
+    with open('trainSetGRIZY.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    nColumn = 3; nRow = 2
+    if underSample is not None:
+        nSample = int(underSample*trainSet.X.shape[0])
+        idxSample = np.random.choice(trainSet.X.shape[0], nSample, replace=False)
+    else:
+        idxSample = range(trainSet.X.shape[0])
+    if doTrain:
+        clf = SVC()
+    figBdy = plt.figure(dpi=120)
+    axBdy = figBdy.add_subplot(1, 1, 1)
+    for i, band in enumerate(['g', 'r', 'i', 'z', 'y']):
+        idxSnr = trainSet.names.index(snrType + '_' + band)
+        idxExt = trainSet.names.index(extType + '_' + band)
+        trainSetBand = trainSet.genTrainSubset(cuts={idxExt:(None, 0.2)}, cols=[idxSnr, idxExt])
+        Xtrain, Y = trainSetBand.getAllSet()
+        if doTrain:
+            clf.fit(Xtrain, Y)
+        else:
+            with open('svc{0}.pkl'.format(band.upper()), 'rb') as f:
+                clf = pickle.load(f)
+        train = etl.Training(trainSetBand, clf, preFit=False)
+        if band == 'g':
+            xRange=(45.0, 1000.0)
+            yRange=(-0.05, 0.175)
+        elif band == 'r':
+            xRange=(30.0, 1000.0)
+            yRange=(-0.05, 0.175)
+        elif band == 'i':
+            xRange=(33.0, 1000.0)
+            yRange=(-0.05, 0.175)
+        elif band == 'z':
+            xRange=(30.0, 1000.0)
+            yRange=(-0.04, 0.175)
+        elif band == 'y':
+            xRange=(25.0, 1000.0)
+            yRange=(-0.05, 0.175)
+        xGrid, yGrid = train.getDecBoundary(0, 1, xRange=xRange, nPoints=100, yRange=yRange,
+                                            asLogX=True, fallbackRange=(0.0, 0.175))
+        axBdy.plot(xGrid, yGrid)
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+
+    axBdy.set_xlim((5.0, 1000.0))
+    axBdy.set_ylim(ylim)
+    axBdy.set_xscale('log')
+    fig.savefig('psfPaperFigs/equalShapeDiffBand{0}.png'.format(extType), dpi=120, bbox_inches='tight')
+
+    return fig
+
 if __name__ == '__main__':
     #equalShapeDifferentBands(underSample=0.05, extType='ext', ylim=(-0.075, 0.2), xlabel='S/N', ylabel=r'$mag_{psf}-mag_{cmodel}$')
     #trainSVC()
