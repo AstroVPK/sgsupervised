@@ -27,6 +27,19 @@ def trainSVC(snrType='snrPsf', extType='ext'):
         with open('svc{0}.pkl'.format(band.upper()), 'wb') as f:
             pickle.dump(clf, f)
 
+def trainSVCWMag(magType='i', extType='ext'):
+    with open('trainSetGRIZY.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    clf = SVC()
+    for i, band in enumerate(['g', 'r', 'i', 'z', 'y']):
+        idxMag = trainSet.names.index('mag' + '_' + magType)
+        idxExt = trainSet.names.index(extType + '_' + band)
+        trainSetBand = trainSet.genTrainSubset(cuts={idxExt:(None, 0.2)}, cols=[idxMag, idxExt])
+        Xtrain, Y = trainSetBand.getAllSet()
+        clf.fit(Xtrain, Y)
+        with open('svcWMag{0}.pkl'.format(band.upper()), 'wb') as f:
+            pickle.dump(clf, f)
+
 def trainSVCWSeeing(snrType='snrPsf', extType='ext'):
     with open('trainSetGRIZY.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -302,12 +315,13 @@ if __name__ == '__main__':
     #equalShapeDifferentBands(underSample=0.05, extType='ext', ylim=(-0.075, 0.2), xlabel='S/N', ylabel=r'$mag_{psf}-mag_{cmodel}$')
     #equalShapeDifferentBandsWSeeing(extType='ext', ylim=(-0.075, 0.2), xlabel='S/N', ylabel=r'$mag_{psf}-mag_{cmodel}$')
     #trainSVC()
+    trainSVCWMag()
     #trainSVCWSeeing()
-    trainSVCWDGauss()
+    #trainSVCWDGauss()
     #plotDecFuncCMap()
     #plotDecFuncCMap(wSeeing=True, seeingVal=0.55)
     #plotDecFuncCMap(wSeeing=True, seeingVal=0.775)
     #seeingDistribs(dType='dGaussRadInner', histRange=(1.0, 2.5), xlim=(1.0, 2.5), ylim=(0.0, 15.0), fName='dGaussRadInnerDistrib.png', xlabel=r'$\sigma_{in}$')
     #seeingDistribs(dType='dGaussRadRat', histRange=(1.95, 2.05), xlim=(1.95, 2.05), ylim=(0.0, 15.0), fName='dGaussRadRatDistrib.png', xlabel=r'$\sigma_{out}/\sigma_{in}$')
     #seeingDistribs(dType='dGaussAmpRat', histRange=(0.15, 0.35), xlim=(0.15, 0.35), ylim=(0.0, 65.0), fName='dGaussAmpRatDistrib.png', xlabel=r'$peak_{out}/peak_{in}$', textRight=['g', 'r', 'i', 'z'], textLeft=['y'])
-    plt.show()
+    #plt.show()
