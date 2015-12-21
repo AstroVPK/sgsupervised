@@ -150,6 +150,9 @@ def getDGaussRadInner(cat, band='i'):
 def getDGaussRadOuter(cat, band='i'):
     return cat.get('dGauss.radOuter.' + band)
 
+def getDGaussRadRat(cat, band='i'):
+    return cat.get('dGauss.radOuter.' + band)/cat.get('dGauss.radInner.' + band)
+
 def getDGaussAmpRat(cat, band='i'):
     return cat.get('dGauss.ampRat.' + band)
 
@@ -188,6 +191,7 @@ inputsDict = {'id' : getId,
               'seeing' : getSeeing,
               'dGaussRadInner' : getDGaussRadInner,
               'dGaussRadOuter' : getDGaussRadOuter,
+              'dGaussRadRat' : getDGaussRadRat,
               'dGaussAmpRat' : getDGaussAmpRat,
               'dGaussQInner' : getDGaussQInner,
               'dGaussQOuter' : getDGaussQOuter,
@@ -872,16 +876,8 @@ class Training(object):
             return self.estimator.decision_function(X)
         return F
 
-    def findZero(self, fixedIndex, fixedVal, zeroRange=None, chooseSol=1, fallbackRange=None):
-        assert self.trainingSet.X.shape[1] == sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1
+    def findZero(self, fixedIndex, varIndex, fixedVal, zeroRange=None, chooseSol=1, fallbackRange=None):
         assert chooseSol in [0, 1]
-
-        if fixedIndex == 0:
-            varIndex = 1
-        elif fixedIndex == 1:
-            varIndex = 0
-        else:
-            raise ValueError('I can only take indexes in [0, 1]')
 
         if zeroRange is None:
             zeroRange = (self.trainingSet.X[:,varIndex].min(),self.trainingSet.X[:,varIndex].max())
@@ -1013,9 +1009,9 @@ class Training(object):
         for i, fixedVal in enumerate(xGrid):
             if fixedIndexes is not None and fixedVals is not None:
                 fixedVals[-1] = fixedVal
-                yGrid[i] = self.findZero(fixedIndexes, fixedVals, zeroRange=yRange, fallbackRange=fallbackRange)
+                yGrid[i] = self.findZero(fixedIndexes, varIndex, fixedVals, zeroRange=yRange, fallbackRange=fallbackRange)
             else:
-                yGrid[i] = self.findZero(rangeIndex, fixedVal, zeroRange=yRange, fallbackRange=fallbackRange)
+                yGrid[i] = self.findZero(rangeIndex, varIndex, fixedVal, zeroRange=yRange, fallbackRange=fallbackRange)
 
         return xGrid, yGrid
 
