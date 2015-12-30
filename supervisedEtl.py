@@ -358,6 +358,77 @@ class TrainingSet(object):
             kargsSub['seeings'] = self.seeings[good]
         return TrainingSet(Xsub, Ysub, **kargsSub)
 
+    def getConcatSet(self, keep=[]):
+        """
+        Merge columns that have suffixes, except those in `keep` (if `keep` is not empty)
+        """
+
+        if hasattr(self, 'XErr'):
+            raise RuntimeError("I don't know how to handle covariance matrices during concatenation")
+
+        namesMerge = []
+        namesConcat = []
+        for n in self.names:
+            if n[-1] in self.bands and n[-2] == '_' and not n[:-2] in keep:
+                if not n[:-2] in namesMerge:
+                    namesMerge.append(n[:-2])
+                    namesConcat.append(n[:-2])
+            else:
+                namesConcat.append(n)
+
+        shapeXConcat = (self.X.shape[0]*len(self.bands), self.X.shape[1] - len(namesMerge)*(len(self.bands) - 1))
+        XConcat = np.zeros(shapeXConcat)
+        YConcat = np.zeros((self.X.shape[0]*len(self.bands),), dtype=bool)
+        for i, n in enumerate(namesConcat):
+            for j, b in enumerate(self.bands):
+                if n in namesMerge:
+                    idx = self.names.index(n + '_' + b)
+                else:
+                    idx = self.names.index(n)
+                XConcat[j*self.X.shape[0]:(j+1)*self.X.shape[0], i] = self.X[:, idx]
+        for i, b in enumerate(self.bands):
+            YConcat[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.Y
+
+        kargsConcat = {}
+        kargsConcat['names'] = namesConcat
+        kargsConcat['bands'] = self.bands
+        if hasattr(self, 'ids'):
+            ids = np.zeros((self.X.shape[0]*len(self.bands), self.ids.shape[1]), dtype=int)
+            for i, b in enumerate(self.bands):
+                ids[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.ids
+            kargsConcat['ids'] = ids
+        if hasattr(self, 'ras'):
+            ras = np.zeros((self.X.shape[0]*len(self.bands), self.ras.shape[1]))
+            for i, b in enumerate(self.bands):
+                ras[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.ras
+            kargsConcat['ras'] = ras
+        if hasattr(self, 'decs'):
+            decs = np.zeros((self.X.shape[0]*len(self.bands), self.decs.shape[1]))
+            for i, b in enumerate(self.bands):
+                decs[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.decs
+            kargsConcat['decs'] = decs
+        if hasattr(self, 'mags'):
+            mags = np.zeros((self.X.shape[0]*len(self.bands),))
+            for i, b in enumerate(self.bands):
+                mags[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.mags
+            kargsConcat['mags'] = mags
+        if hasattr(self, 'exts'):
+            exts = np.zeros((self.X.shape[0]*len(self.bands),))
+            for i, b in enumerate(self.bands):
+                exts[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.exts
+            kargsConcat['exts'] = exts
+        if hasattr(self, 'snrs'):
+            snrs = np.zeros((self.X.shape[0]*len(self.bands),))
+            for i, b in enumerate(self.bands):
+                snrs[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.snrs
+            kargsConcat['snrs'] = snrs
+        if hasattr(self, 'seeings'):
+            seeings = np.zeros((self.X.shape[0]*len(self.bands),))
+            for i, b in enumerate(self.bands):
+                seeings[i*self.X.shape[0]:(i+1)*self.X.shape[0]] = self.seeings
+            kargsConcat['seeings'] = seeings
+        return TrainingSet(XConcat, YConcat, **kargsConcat)
+
     def getTrainSet(self, standardized=True):
         if standardized:
             return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
