@@ -140,6 +140,12 @@ def getSnrPsf(cat, band='i'):
     snr = f/fErr
     return snr
 
+def getSnrAp(cat, band='i'):
+    f = cat.get('flux.sinc.'+band)
+    fErr = cat.get('flux.sinc.err.'+band)
+    snr = f/fErr
+    return snr
+
 def getSeeing(cat, band='i'):
     seeing = cat.get('seeing.'+band)
     return seeing
@@ -188,6 +194,7 @@ inputsDict = {'id' : getId,
               'extHsmDeconv' : getExtHsmDeconv,
               'snr' : getSnr,
               'snrPsf' : getSnrPsf,
+              'snrAp' : getSnrAp,
               'seeing' : getSeeing,
               'dGaussRadInner' : getDGaussRadInner,
               'dGaussRadOuter' : getDGaussRadOuter,
