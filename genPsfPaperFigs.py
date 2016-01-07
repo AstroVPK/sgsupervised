@@ -68,31 +68,79 @@ def trainSVCWSeeing(snrType='snrPsf', extType='ext', concatBands=False):
             with open('svcWSeeing{0}.pkl'.format(band.upper()), 'wb') as f:
                 pickle.dump(clf, f)
 
-def trainSVCWSeeingWMag(magType='i', extType='ext', concatBands=False, bands=['g', 'r', 'i', 'z', 'y']):
+def trainSVCWSeeingWMag(magType='i', extType='ext', concatBands=False, bands=['g', 'r', 'i', 'z', 'y'], getScore=False,
+                        withDGauss=False, withSnr=False, snrType='snrPsf'):
     with open('trainSetGRIZY.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     clf = SVC()
     if concatBands:
-        for i, band in enumerate(bands):
-            idxMag = trainSet.names.index('mag' + '_' + magType)
-            idxExt = trainSet.names.index(extType + '_' + band)
-            idxSeeing = trainSet.names.index('seeing' + '_' + band)
-            trainSetBand = trainSet.genTrainSubset(cuts={idxExt:(None, 0.2)}, cols=[idxMag, idxExt, idxSeeing])
-            if i == 0:
-                Xtrain = np.zeros((trainSetBand.X.shape[0]*len(bands), trainSetBand.X.shape[1]))
-                Y = np.zeros((trainSetBand.Y.shape[0]*len(bands), ))
-            Xtrain[trainSetBand.X.shape[0]*i:trainSetBand.X.shape[0]*(i+1)], Y[trainSetBand.Y.shape[0]*i:trainSetBand.Y.shape[0]*(i+1)] = trainSetBand.getAllSet()
-        clf.fit(Xtrain, Y)
+        trainSetConcat = trainSet.getConcatSet(keep=['mag'])
+        cols = []
+        idxMag = trainSetConcat.names.index('mag' + '_' + magType)
+        cols.append(idxMag)
+        idxExt = trainSetConcat.names.index(extType)
+        cols.append(idxExt)
+        if withSnr:
+            idxSnr = trainSetConcat.names.index(snrType)
+            cols.append(idxSnr)
+        if withDGauss:
+            idxRadInner = trainSetConcat.names.index('dGaussRadInner')
+            cols.append(idxRadInner)
+            idxAmpRat = trainSetConcat.names.index('dGaussAmpRat')
+            cols.append(idxAmpRat)
+        else:
+            idxSeeing = trainSetConcat.names.index('seeing')
+            cols.append(idxSeeing)
+        trainSetConcatSub = trainSet.genTrainSubset(cuts={idxExt:(None, 0.2)}, cols=cols)
+        if getScore:
+            Xtrain, Y = trainSetConcatSub.getTrainSet()
+            clf.fit(Xtrain, Y)
+            Xtest, Y = trainSetConcatSub.getTestSet()
+            weightStar = 1.0/np.sum(Y)
+            weightGal = 1.0/(len(Y)-np.sum(Y))
+            weightStar /= weightStar + weightGal
+            weightGal /= weightStar + weightGal
+            weights = np.zeros(Y.shape)
+            weights[Y] = weightStar; weights[np.logical_not(Y)] = weightGal
+            print "Concatenation score=", clf.score(Xtest, Y, sample_weight=weights)
+        else:
+            Xtrain, Y = trainSetConcatSub.getAllSet()
+            clf.fit(Xtrain, Y)
         with open('svcWSeeingWMagConcat.pkl', 'wb') as f:
             pickle.dump(clf, f)
     else:
         for i, band in enumerate(['g', 'r', 'i', 'z', 'y']):
+            cols = []
             idxMag = trainSet.names.index('mag' + '_' + magType)
+            cols.append(idxMag)
             idxExt = trainSet.names.index(extType + '_' + band)
-            idxSeeing = trainSet.names.index('seeing' + '_' + band)
-            trainSetBand = trainSet.genTrainSubset(cuts={idxExt:(None, 0.2)}, cols=[idxMag, idxExt, idxSeeing])
-            Xtrain, Y = trainSetBand.getAllSet()
-            clf.fit(Xtrain, Y)
+            cols.append(idxExt)
+            if withSnr:
+                idxSnr = trainSet.names.index(snrType + '_' + band)
+                cols.append(idxSnr)
+            if withDGauss:
+                idxRadInner = trainSet.names.index('dGaussRadInner' + '_' + band)
+                cols.append(idxRadInner)
+                idxAmpRat = trainSet.names.index('dGaussAmpRat' + '_' + band)
+                cols.append(idxAmpRat)
+            else:
+                idxSeeing = trainSet.names.index('seeing' + '_' + band)
+                cols.append(idxSeeing)
+            trainSetBand = trainSet.genTrainSubset(cuts={idxExt:(None, 0.2)}, cols=cols)
+            if getScore:
+                Xtrain, Y = trainSetBand.getTrainSet()
+                clf.fit(Xtrain, Y)
+                Xtest, Y = trainSetBand.getTestSet()
+                weightStar = 1.0/np.sum(Y)
+                weightGal = 1.0/(len(Y)-np.sum(Y))
+                weightStar /= weightStar + weightGal
+                weightGal /= weightStar + weightGal
+                weights = np.zeros(Y.shape)
+                weights[Y] = weightStar; weights[np.logical_not(Y)] = weightGal
+                print "Band {0} score=".format(band), clf.score(Xtest, Y, sample_weight=weights)
+            else:
+                Xtrain, Y = trainSetBand.getAllSet()
+                clf.fit(Xtrain, Y)
             with open('svcWSeeingWMag{0}.pkl'.format(band.upper()), 'wb') as f:
                 pickle.dump(clf, f)
 
@@ -505,14 +553,15 @@ if __name__ == '__main__':
     #equalShapeDifferentBands(underSample=0.05, extType='ext', ylim=(-0.075, 0.2), xlabel='S/N', ylabel=r'$mag_{psf}-mag_{cmodel}$')
     #equalShapeDifferentBandsWSeeing(extType='ext', ylim=(-0.075, 0.2), xlabel='S/N', ylabel=r'$mag_{psf}-mag_{cmodel}$')
     #equalShapeDifferentBandsWSeeing(snrType='magI', extType='ext', ylim=(-0.075, 0.2), xlabel=r'$mag_{cmodel}$ HSC-I', ylabel=r'$mag_{psf}-mag_{cmodel}$')
-    equalShapeDifferentBandsWSeeing(snrType='magI', extType='ext', ylim=(-0.075, 0.2), xlabel=r'$mag_{cmodel}$ HSC-I',
-                                    ylabel=r'$mag_{psf}-mag_{cmodel}$', concatBands=True)
+    #equalShapeDifferentBandsWSeeing(snrType='magI', extType='ext', ylim=(-0.075, 0.2), xlabel=r'$mag_{cmodel}$ HSC-I',
+    #                                ylabel=r'$mag_{psf}-mag_{cmodel}$', concatBands=True)
     #trainSVC()
     #trainSVCWMag()
     #equalShapeDifferentBands(underSample=0.05, snrType='magI', extType='ext', ylim=(-0.075, 0.2), xlabel=r'$mag_{cmodel}$ HSC-I', ylabel=r'$mag_{psf}-mag_{cmodel}$', asLogX=False)
     #trainSVCWSeeing()
     #trainSVCWSeeingWMag()
-    #trainSVCWSeeingWMag(concatBands=True)
+    trainSVCWSeeingWMag(concatBands=False, getScore=True, withDGauss=False, withSnr=True, snrType='snrAp')
+    trainSVCWSeeingWMag(concatBands=True, getScore=True, withDGauss=False, withSnr=True, snrType='snrAp')
     #trainSVCWDGauss()
     #plotDecFuncCMap()
     #plotDecFuncCMap(snrType='magI', xRange=(18.0, 26.0), asLogX=False)
