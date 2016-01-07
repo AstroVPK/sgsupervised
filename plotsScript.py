@@ -1,4 +1,5 @@
 import pickle
+import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from sklearn.svm import LinearSVC
@@ -209,15 +210,15 @@ def _fromHscToSdss(rHsc, iHsc, zHsc):
     izHsc = iHsc - zHsc
     riHsc = rHsc - iHsc
     Ciz = ciz[0] - czi[0] - izHsc
-    izSdss1 = (-Biz + np.sqrt(Biz**2-4*Aiz*Ciz))/2Aiz
-    izSdss2 = (-Biz - np.sqrt(Biz**2-4*Aiz*Ciz))/2Aiz
-    Cri1 = cri[0] - ciz[0] - ciz[1]*izSdss1 - ciz[2]*izSdss**2 - riHsc
-    Cri2 = cri[0] - ciz[0] - ciz[1]*izSdss2 - ciz[2]*izSdss**2 - riHsc
-    riSdss1 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri1))/2Ari
-    riSdss2 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri1))/2Ari
-    riSdss3 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri2))/2Ari
-    riSdss4 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri2))/2Ari
-    sols = [(riSdss1, izSdss1), (riSdss2, rzSdss1), (riSdss3, izSdss2), (riSdss4, izSdss2)]
+    izSdss1 = (-Biz + np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
+    izSdss2 = (-Biz - np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
+    Cri1 = cri[0] - ciz[0] - ciz[1]*izSdss1 - ciz[2]*izSdss1**2 - riHsc
+    Cri2 = cri[0] - ciz[0] - ciz[1]*izSdss2 - ciz[2]*izSdss2**2 - riHsc
+    riSdss1 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri1))/2/Ari
+    riSdss2 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri1))/2/Ari
+    riSdss3 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
+    riSdss4 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
+    sols = [(riSdss1, izSdss1), (riSdss2, izSdss1), (riSdss3, izSdss2), (riSdss4, izSdss2)]
     return sols
 
 def _fromSdssToHsc(rSdss, iSdss, zSdss):
