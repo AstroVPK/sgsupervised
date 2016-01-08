@@ -206,9 +206,7 @@ Biz = 1.0 + ciz[1] + czi[1]
 Ari = cri[2]
 Bri = 1.0 + cri[1]
 
-def _fromHscToSdss(rHsc, iHsc, zHsc):
-    izHsc = iHsc - zHsc
-    riHsc = rHsc - iHsc
+def _fromHscToSdss(riHsc, izHsc, giveClosest=True):
     Ciz = ciz[0] - czi[0] - izHsc
     izSdss1 = (-Biz + np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
     izSdss2 = (-Biz - np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
@@ -218,8 +216,18 @@ def _fromHscToSdss(rHsc, iHsc, zHsc):
     riSdss2 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri1))/2/Ari
     riSdss3 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
     riSdss4 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
-    sols = [(riSdss1, izSdss1), (riSdss2, izSdss1), (riSdss3, izSdss2), (riSdss4, izSdss2)]
-    return sols
+    riStack = np.vstack((riSdss1, riSdss2, riSdss3, riSdss4))
+    izStack = np.vstack((izSdss1, izSdss1, izSdss2, izSdss2))
+    d1 = np.square(riSdss1 - riHsc) + np.square(izSdss1 - izHsc)
+    d2 = np.square(riSdss2 - riHsc) + np.square(izSdss1 - izHsc)
+    d3 = np.square(riSdss3 - riHsc) + np.square(izSdss2 - izHsc)
+    d4 = np.square(riSdss4 - riHsc) + np.square(izSdss2 - izHsc)
+    dStack = np.vstack((d1, d2, d3, d4))
+    idxMinD = np.argmin(dStack, axis=0)
+    idxArange = np.arange(len(riHsc))
+    riSdss = riStack[idxMinD, idxArange]
+    izSdss = izStack[idxMinD, idxArange]
+    return riSdss, izSdss
 
 def _fromSdssToHsc(rSdss, iSdss, zSdss):
     riSdss = rSdss - iSdss 
@@ -233,7 +241,6 @@ def _fromSdssToHsc(rSdss, iSdss, zSdss):
 def highPostStarsShape():
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
-
     fontSize = 18
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
@@ -408,10 +415,10 @@ if __name__ == '__main__':
     #        featuresCuts={1:(None, None)})
     #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0), yRange=(-0.1, 0.50),
     #         ylabel='Mag_psf-Mag_cmodel', featuresCuts={1:(None, 0.1)})
-    rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', snrType='mag', ylim=(-0.02, 0.1), xRange=(18.0, 25.2), yRange=(-0.1, 0.50),
-            ylabel='mag_psf-mag_cmodel (HSC-I deep)', featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0), 
-            xlabel='mag_cmodel (HSC-I deep)')
+    #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', snrType='mag', ylim=(-0.02, 0.1), xRange=(18.0, 25.2), yRange=(-0.1, 0.50),
+    #        ylabel='mag_psf-mag_cmodel (HSC-I deep)', featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0), 
+    #        xlabel='mag_cmodel (HSC-I deep)')
     #magExtPlots()
     #extCutRoc()
-    #highPostStarsShape()
+    highPostStarsShape()
     #hstVsHscSize()
