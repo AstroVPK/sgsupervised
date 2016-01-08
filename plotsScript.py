@@ -263,44 +263,48 @@ def highPostStarsShape():
     fig.savefig('/u/garmilla/Desktop/colorStarsShapes.png', bbox_inches='tight')
     plt.show()
 
-def rc1Plots(rerun='Cosmos1', polyOrder=3, extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), yRange=(-20, 20), ylabel='rTrace',
-             featuresCuts={1:(None, 1.0)}):
+def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), 
+             yRange=(-20, 20), ylabel='rTrace', featuresCuts={1:(None, 1.0)}, asLogX=True, xlim=(5.0, 3000), xlabel='S/N',
+             singleBand=False, band='i'):
     if rerun == 'Cosmos1':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
     elif rerun == 'Cosmos2':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos2GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     elif rerun == 'Cosmos':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104CosmosGRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
 
     if rerun in ['Cosmos1', 'Cosmos2']:
-        trainSet = etl.extractTrainSet(cat, inputs=['snrPsf', extType], polyOrder=polyOrder)
+        trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], polyOrder=polyOrder, bands=['i'])
     elif rerun == 'Cosmos':
-        trainSet = etl.extractTrainSet(cat, inputs=['snrPsf', extType], bands=['g', 'r', 'i', 'z', 'y'], polyOrder=polyOrder)
+        if singleBand:
+            trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], bands=[band], polyOrder=polyOrder)
+        else:
+            trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], bands=['g', 'r', 'i', 'z', 'y'], polyOrder=polyOrder)
 
-    clf = dGauss.logisticFit(trainSet, featuresCuts=featuresCuts)
+    clf = dGauss.logisticFit(trainSet, featuresCuts=featuresCuts, n_jobs=1)
     train = etl.Training(trainSet, clf)
-    figPMap = train.plotPMap((5, 3000), ylim, 200, 200, xlabel='S/N', ylabel=ylabel, asLogX=True, cbLabel='pStar')
+    figPMap = train.plotPMap(xlim, ylim, 200, 200, xlabel=xlabel, ylabel=ylabel, asLogX=asLogX, cbLabel='pStar')
 
-    figPMap.savefig('/u/garmilla/pMap{0}.png'.format(rerun))
+    figPMap.savefig('/u/garmilla/pMap{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
     train.printPolynomial(['snr', 'magDiff'])
     if rerun in ['Cosmos1', 'Cosmos2']:
-        figBdy = train.plotBoundary(0, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=True, xlim=(5.0, 3000), yRange=yRange,
-                                    xlabel='S/N', ylabel=ylabel)
+        figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
+                                    xlabel=xlabel, ylabel=ylabel, frac=0.06)
     elif rerun == 'Cosmos':
-        figBdy = train.plotBoundary(0, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=True, xlim=(5.0, 3000), yRange=yRange,
-                                    xlabel='S/N', ylabel=ylabel, frac=0.006)
-    figBdy.savefig('/u/garmilla/boundary{0}.png'.format(rerun))
+        figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
+                                    xlabel=xlabel, ylabel=ylabel, frac=0.006)
+    figBdy.savefig('/u/garmilla/boundary{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
     mpl.rcParams['figure.figsize'] = 12, 6
     figScores = train.plotScores(magRange=(18.0, 26.0))
-    figScores.savefig('/u/garmilla/scores{0}.png'.format(rerun))
+    figScores.savefig('/u/garmilla/scores{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
 
 def magExtPlots(rerun='Cosmos1'):
     if rerun == 'Cosmos1':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1GRIZY.fits')
     elif rerun == 'Cosmos2':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos2GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     elif rerun == 'Cosmos':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104CosmosGRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
 
     #fig = utils.makeMagExPlot(cat, 'i', withLabels=True, trueSample=True, frac=0.04)
     fig = utils.makeExtHist(cat, 'i', withLabels=True, magCuts=[(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)], xlim=(-0.01, 0.5))
@@ -309,11 +313,11 @@ def magExtPlots(rerun='Cosmos1'):
 
 def extCutRoc(rerun='Cosmos1', extType='ext', snrCut=(10, 30), nConnect=20):
     if rerun == 'Cosmos1':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1GRIZY.fits')
     elif rerun == 'Cosmos2':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos2GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     elif rerun == 'Cosmos':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104CosmosGRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
 
     if rerun in ['Cosmos1', 'Cosmos2']:
         trainSet = etl.extractTrainSet(cat, inputs=[extType], polyOrder=1)
@@ -378,7 +382,7 @@ def extCutRoc(rerun='Cosmos1', extType='ext', snrCut=(10, 30), nConnect=20):
     plt.show()
 
 def hstVsHscSize(snrCut=(10, 30)):
-    cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1Iiphot.fits')
+    cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1Iiphot.fits')
     extHsc = -2.5*etl.np.log10(cat.get('flux.psf.i')/cat.get('cmodel.flux.i'))
     extHst = cat.get('mu.max')-cat.get('mag.auto')
     snr = cat.get('flux.psf.i')/cat.get('flux.psf.err.i')
@@ -399,10 +403,15 @@ def hstVsHscSize(snrCut=(10, 30)):
 if __name__ == '__main__':
     #cutsPlots()
     #colExPlots()
-    #rc1Plots(rerun='Cosmos')
-    #rc1Plots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0), yRange=(-0.1, 0.50),
+    #rcPlots(rerun='Cosmos1')
+    #rcPlots(rerun='Cosmos1', snrType='mag', xRange=(23.0, 24.5), asLogX=False, xlim=(18.0, 26.0), xlabel='magnitude', polyOrder=3,
+    #        featuresCuts={1:(None, None)})
+    #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0), yRange=(-0.1, 0.50),
     #         ylabel='Mag_psf-Mag_cmodel', featuresCuts={1:(None, 0.1)})
+    rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', snrType='mag', ylim=(-0.02, 0.1), xRange=(18.0, 25.2), yRange=(-0.1, 0.50),
+            ylabel='mag_psf-mag_cmodel (HSC-I deep)', featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0), 
+            xlabel='mag_cmodel (HSC-I deep)')
     #magExtPlots()
     #extCutRoc()
-    highPostStarsShape()
+    #highPostStarsShape()
     #hstVsHscSize()
