@@ -238,22 +238,31 @@ def _fromSdssToHsc(rSdss, iSdss, zSdss):
     zHsc = zSdss + czi[0] + czi[1]*ziSdss + czi[2]*ziSdss**2
     return rHsc, iHsc, zHsc
 
-def highPostStarsShape():
+def _getAbsoluteMagR(riSdss):
+    return 4.0 + 11.86*riSdss - 10.74*riSdss**2 + 5.99*riSdss**3 - 1.20*riSdss**4
+
+def highPostStarsShape(trainClfs=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     fontSize = 18
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
-    gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
-    X, XErr, Y = trainSet.getTrainSet(standardized=False)
-    mags = trainSet.getTrainMags()
     #X = X[:5000]; XErr[:5000]; Y = Y[:5000]; mags = mags[:5000]
     clfs = []
-    for i, magBin in enumerate(magBins):
-        good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
-        ngStar, ngGal = gaussians[i]
-        clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
-        clf.fit(X[good], XErr[good], Y[good])
-        clfs.append(clf)
+    if trainClfs:
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
+        X, XErr, Y = trainSet.getTrainSet(standardized=False)
+        mags = trainSet.getTrainMags()
+        for i, magBin in enumerate(magBins):
+            good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsCols.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsCols.pkl', 'rb') as f:
+            clfs = pickle.load(f)
     X, XErr, Y = trainSet.getTestSet(standardized=False)
     mags = trainSet.getTestMags()
     exts = trainSet.getTestExts()
@@ -262,12 +271,39 @@ def highPostStarsShape():
         good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
         YProb[good] = clfs[i].predict_proba(X[good], XErr[good])
     good = YProb > 0.9
-    fig = plt.figure()
-    plt.scatter(mags[good], exts[good], marker='.', s=1)
-    plt.xlabel('Mag_cmodel')
-    plt.ylabel('Mag_psf-Mag_cmodel')
-    plt.title('Objects with P(Star|Colors)>0.9')
-    fig.savefig('/u/garmilla/Desktop/colorStarsShapes.png', bbox_inches='tight')
+    riSdss, izSdss = _fromHscToSdss(trainSet.X[good,1], trainSet.X[good,2])
+    magRHsc = mags[good] + trainSet.X[good, 1]
+    magRSdss = magRHsc - cri[0] - cri[1]*riSdss - cri[2]*riSdss**2
+    magRAbsSdss = _getAbsoluteMagR(riSdss)
+    magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
+    dKpc = np.power(10.0, (magRSdss-magRAbsSdss)/5)/100
+    fig = plt.figure(dpi=120)
+    axExt = fig.add_subplot(2, 2, 1)
+    axExt.scatter(dKpc, exts[good], marker='.', s=1)
+    axExt.set_xlim((0.0, 100.0))
+    axExt.set_ylim((-0.01, 0.1))
+    axExt.set_xlabel('d (kpc)')
+    axExt.set_ylabel('Mag_psf-Mag_cmodel')
+    axMagAbs = fig.add_subplot(2, 2, 2)
+    axMagAbs.scatter(dKpc, magRAbsHsc, marker='.', s=1)
+    axMagAbs.set_xlim((0.0, 100.0))
+    axMagAbs.set_ylim((2.0, 12.0))
+    axMagAbs.set_xlabel('d (kpc)')
+    axMagAbs.set_ylabel('Absolute Magnitude HSC-R')
+    axCol = fig.add_subplot(2, 2, 3)
+    axCol.scatter(dKpc, trainSet.X[good,1], marker='.', s=1)
+    axCol.set_xlim((0.0, 100.0))
+    axCol.set_ylim((-0.2, 2.0))
+    axCol.set_xlabel('d (kpc)')
+    axCol.set_ylabel('r-i')
+    axMag = fig.add_subplot(2, 2, 4)
+    axMag.scatter(dKpc, magRHsc, marker='.', s=1)
+    axMag.set_xlim((0.0, 100.0))
+    #axMag.set_ylim((-0.2, 2.0))
+    axMag.set_xlabel('d (kpc)')
+    axMag.set_ylabel('Apparent Magnitude HSC-R')
+    fig.suptitle('Objects with P(Star|Colors)>0.9')
+    fig.savefig('/u/garmilla/Desktop/colorStarsShapes.png', dpi=120, bbox_inches='tight')
     plt.show()
 
 def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), 
