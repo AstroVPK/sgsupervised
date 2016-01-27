@@ -1,3 +1,4 @@
+import os
 import pickle
 import numpy as np
 import matplotlib as mpl
@@ -397,7 +398,9 @@ def highPostStarsShape(trainClfs=False):
     #axGr.set_xlim((-0.5, 2.5))
     #axGr.set_ylim((2.0, 12.0))
     fig.suptitle('Objects with P(Star|Colors)>0.9')
-    fig.savefig('/u/garmilla/Desktop/colorStarsShapes.png', dpi=120, bbox_inches='tight')
+    dirHome = os.path.expanduser('~')
+    fileFig = os.path.join(dirHome, 'Desktop/colorStarsShapes.png')
+    fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     plt.show()
 
 def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), 
@@ -550,5 +553,5 @@ if __name__ == '__main__':
     #        xlabel='mag_cmodel (HSC-I deep)')
     #magExtPlots()
     #extCutRoc()
-    highPostStarsShape()
+    highPostStarsShape(trainClfs=False)
     #hstVsHscSize()
