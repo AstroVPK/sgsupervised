@@ -118,6 +118,23 @@ class XDClf(object):
         if self.priorStar == 'auto':
             self._priorStar = np.sum(Y)*1.0/len(Y)
 
+    def getMarginalClf(self, cols=None):
+        if cols is None:
+            raise ValueError("You have to specify the columns you want to keep so that I can marginalizse over the rest.")
+        rowsV, colsV = np.meshgrid(cols, cols, indexing='ij')
+        xdMarginal = XDClf(ngStar=self.ngStar, ngGal=self.ngGal, priorStar=self.priorStar)
+        xdMarginal.clfStar = XDGMM(self.ngStar)
+        xdMarginal.clfStar.alpha = self.clfStar.alpha
+        xdMarginal.clfStar.mu = self.clfStar.mu[:, cols]
+        xdMarginal.clfStar.V = self.clfStar.V[:, rowsV, colsV]
+        xdMarginal.clfGal = XDGMM(self.ngGal)
+        xdMarginal.clfGal.alpha = self.clfGal.alpha
+        xdMarginal.clfGal.mu = self.clfGal.mu[:, cols]
+        xdMarginal.clfGal.V = self.clfGal.V[:, rowsV, colsV]
+        if self.priorStar == 'auto':
+            xdMarginal._priorStar = self._priorStar
+        return xdMarginal
+
     def predict_proba(self, X, XErr, priorStar=None):
         if priorStar is not None:
             self._priorStar = priorStar

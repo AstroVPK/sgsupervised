@@ -311,6 +311,65 @@ def _getPColors(g, r, i):
     riProj = gris[:,1] - gris[:,2]
     return P1, P2, grProj, riProj
 
+def plotPostMarginals(trainClfs=False):
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    if trainClfs:
+        fontSize = 18
+        clfs = []
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
+        X, XErr, Y = trainSet.getTrainSet(standardized=False)
+        mags = trainSet.getTrainMags()
+        for i, magBin in enumerate(magBins):
+            good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsCols.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsCols.pkl', 'rb') as f:
+            clfs = pickle.load(f)
+    X, XErr, Y = trainSet.getTestSet(standardized=False)
+    mags = trainSet.getTestMags()
+    colsList = [[0, 1], [1, 2], [2, 3]]
+    cNames = ['g-r', 'r-i', 'i-z', 'z-y']
+    colsLims = [[(-0.5, 2.5), (-0.5, 3.5)], [(-0.5, 3.5), (-0.5, 1.5)], [(-0.5, 1.5), (-0.5, 1.0)]]
+    for j, clf in enumerate(clfs):
+        fig = plt.figure(figsize=(20, 12), dpi=120)
+        good = etl.np.logical_and(magBins[j][0] < mags, mags < magBins[j][1])
+        for i, cols in enumerate(colsList):
+            clfMarginal = clf.getMarginalClf(cols=cols)
+            axCmap = fig.add_subplot(2, 3, i+1)
+            xRange = np.linspace(colsLims[i][0][0], colsLims[i][0][1], num=100)
+            yRange = np.linspace(colsLims[i][1][0], colsLims[i][1][1], num=100)
+            Xgrid, Ygrid = np.meshgrid(xRange, yRange)
+            XInput = np.vstack((Xgrid.flatten(), Ygrid.flatten())).T
+            XInputErr = np.zeros((XInput.shape + (XInput.shape[-1],)))
+            Z = clfMarginal.predict_proba(XInput, XInputErr)
+            Z = Z.reshape(Xgrid.shape)
+            im = axCmap.imshow(Z, extent=[xRange[0], xRange[-1], yRange[0], yRange[-1]], aspect='auto', origin='lower')
+            cb = plt.colorbar(im)
+            axCmap.set_xlabel(cNames[i])
+            axCmap.set_ylabel(cNames[i+1])
+
+            axScat = fig.add_subplot(2, 3, i+4)
+            for k in range(len(X[good])):
+                if Y[good][k]:
+                    axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='blue')
+                else:
+                    axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='red')
+            axScat.set_xlim(colsLims[i][0])
+            axScat.set_ylim(colsLims[i][1])
+            axScat.set_xlabel(cNames[i])
+            axScat.set_ylabel(cNames[i+1])
+        fig.suptitle('{0} < Mag HSC-I < {1}'.format(*magBins[j]))
+        dirHome = os.path.expanduser('~')
+        fileFig = os.path.join(dirHome, 'Desktop/xdFitVsData{0}-{1}.png'.format(*magBins[j]))
+        fig.savefig(fileFig, dpi=120, bbox_inches='tight')
+
 def highPostStarsShape(trainClfs=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
