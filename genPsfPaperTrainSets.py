@@ -2,10 +2,15 @@ import pickle
 
 import supervisedEtl as etl
 
+from lsst.pex.exceptions import LsstCppException
+
 concatBands=False
 bands = ['g', 'r', 'i', 'z', 'y']
 
-cat = etl.afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
+try:
+    cat = etl.afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
+except LsstCppException:
+    cat = etl.afwTable.SimpleCatalog.readFits('/home/jose/Data/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
 
 trainSet = etl.extractTrainSet(cat, inputs=['snrPsf', 'snrAp', 'mag', 'ext', 'extHsmDeconv', 'seeing', 'dGaussRadInner', 'dGaussRadRat', 'dGaussAmpRat'], bands=bands, concatBands=concatBands)
 if concatBands:
