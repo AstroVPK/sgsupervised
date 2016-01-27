@@ -198,6 +198,7 @@ def colExPlots():
 
     #plt.show()
 
+cgr = (-0.00816446, -0.08366937, -0.00726883)
 cri = (0.00231810,  0.01284177, -0.03068248)
 ciz = (0.00130204, -0.16922042, -0.01374245)
 czi = (-0.00680620,  0.01353969,  0.01479369)
@@ -205,10 +206,10 @@ Aiz = ciz[2] - czi[2]
 Biz = 1.0 + ciz[1] + czi[1]
 Ari = cri[2]
 Bri = 1.0 + cri[1]
+Agr = cgr[2]
+Bgr = 1.0 + cgr[1]
 
-def _fromHscToSdss(rHsc, iHsc, zHsc):
-    izHsc = iHsc - zHsc
-    riHsc = rHsc - iHsc
+def _fromHscToSdss(grHsc, riHsc, izHsc, giveClosest=True):
     Ciz = ciz[0] - czi[0] - izHsc
     izSdss1 = (-Biz + np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
     izSdss2 = (-Biz - np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
@@ -218,35 +219,118 @@ def _fromHscToSdss(rHsc, iHsc, zHsc):
     riSdss2 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri1))/2/Ari
     riSdss3 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
     riSdss4 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
-    sols = [(riSdss1, izSdss1), (riSdss2, izSdss1), (riSdss3, izSdss2), (riSdss4, izSdss2)]
-    return sols
+    riStack = np.vstack((riSdss1, riSdss2, riSdss3, riSdss4))
+    izStack = np.vstack((izSdss1, izSdss1, izSdss2, izSdss2))
+    d1 = np.square(riSdss1 - riHsc) + np.square(izSdss1 - izHsc)
+    d2 = np.square(riSdss2 - riHsc) + np.square(izSdss1 - izHsc)
+    d3 = np.square(riSdss3 - riHsc) + np.square(izSdss2 - izHsc)
+    d4 = np.square(riSdss4 - riHsc) + np.square(izSdss2 - izHsc)
+    dStack = np.vstack((d1, d2, d3, d4))
+    idxMinD = np.argmin(dStack, axis=0)
+    idxArange = np.arange(len(riHsc))
+    riSdss = riStack[idxMinD, idxArange]
+    izSdss = izStack[idxMinD, idxArange]
+    Cgr = cgr[0] - cri[0] - cri[1]*riSdss - cri[2]*riSdss1**2 - grHsc
+    grSdss1 = (-Bgr + np.sqrt(Bgr**2 - 4*Agr*Cgr))/2/Agr
+    grSdss2 = (-Bgr - np.sqrt(Bgr**2 - 4*Agr*Cgr))/2/Agr
+    grStack = np.vstack((grSdss1, grSdss2))
+    d1 = np.square(grSdss1 - grHsc)
+    d2 = np.square(grSdss2 - grHsc)
+    dStack = np.vstack((d1, d2))
+    idxMinD = np.argmin(dStack, axis=0)
+    grSdss = grStack[idxMinD, idxArange]
+    return grSdss, riSdss, izSdss
 
-def _fromSdssToHsc(rSdss, iSdss, zSdss):
+def _fromSdssToHsc(gSdss, rSdss, iSdss, zSdss):
+    grSdss = gSdss - rSdss 
     riSdss = rSdss - iSdss 
     izSdss = iSdss - zSdss 
     ziSdss = zSdss - iSdss 
+    gHsc = gSdss + cgr[0] + cgr[1]*grSdss + cgr[2]*grSdss**2
     rHsc = rSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
     iHsc = iSdss + ciz[0] + ciz[1]*izSdss + ciz[2]*izSdss**2
     zHsc = zSdss + czi[0] + czi[1]*ziSdss + czi[2]*ziSdss**2
-    return rHsc, iHsc, zHsc
+    return gHsc, rHsc, iHsc, zHsc
 
-def highPostStarsShape():
+def _getAbsoluteMagR(riSdss):
+    return 4.0 + 11.86*riSdss - 10.74*riSdss**2 + 5.99*riSdss**3 - 1.20*riSdss**4
+
+def _getPColors(g, r, i):
+    P1 = np.zeros(g.shape)
+    P2 = np.zeros(g.shape)
+    As = np.zeros((g.shape[0], 3, 3))
+    Bs = np.zeros((g.shape[0], 3))
+    isW = np.zeros(g.shape, dtype=bool)
+    P1w = 0.928*g - 0.556*r - 0.372*i - 0.425
+    P2w = -0.227*g + 0.792*r -0.567*i + 0.050
+    isInW = np.logical_and(P1w > -0.2, P1w < 0.6)
+    P1[isInW] = P1w[isInW]
+    P2[isInW] = P2w[isInW]
+    isW[isInW] = True
+    P1x = r - i
+    P2x = 0.707*g - 0.707*r - 0.988
+    isInX = np.logical_and(P1x > 0.8, P1x < 1.6)
+    P1[isInX] = P1x[isInX]
+    P2[isInX] = P2x[isInX]
+    isW[isInX] = False
+    if np.any(np.logical_and(isInW, isInX)):
+        both = np.logical_and(isInW, isInX)
+        bothW = np.logical_and(both, P2w**2 < P2x**2)
+        P1[bothW] = P1w[bothW]
+        P2[bothW] = P2w[bothW]
+        isW[bothW] = True
+    if np.any(np.logical_and(np.logical_not(isInW), np.logical_not(isInX))):
+        isInNan = np.logical_and(np.logical_not(isInW), np.logical_not(isInX))
+        isInNanW = np.logical_and(isInNan, P2w**2 < P2x**2)
+        isInNanX = np.logical_and(isInNan, P2x**2 <= P2w**2)
+        P1[isInNanW] = P1w[isInNanW]
+        P2[isInNanW] = P2w[isInNanW]
+        isW[isInNanW] = True
+        P1[isInNanX] = P1x[isInNanX]
+        P2[isInNanX] = P2x[isInNanX]
+        isW[isInNanX] = False
+        #isNotInNan = np.logical_not(isInNan)
+        #plt.scatter(g[isNotInNan] - i[isNotInNan], r[isNotInNan] - i[isNotInNan], marker='.', s=1, color='blue')
+        #plt.scatter(g[isInNan] - i[isInNan], r[isInNan] - i[isInNan], marker='.', s=1, color='red')
+        #plt.show()
+        #P1[isInNan] = np.nan
+        #P2[isInNan] = np.nan
+        #raise ValueError("I've found an object that is no regime!")
+    isX = np.logical_not(isW)
+    As[isW] = np.array([[0.928, -0.556, -0.372], 
+                        [-0.227, 0.792, -0.567], 
+                        [0.0, 0.0, 1.0]])
+    Bs[isW, 0] = P1[isW] + 0.425; Bs[isW, 1] = 0.0 - 0.050; Bs[isW, 2] = i[isW] 
+    As[isX] = np.array([[0.0, 1.0, -1.0], 
+                        [0.707, -0.707, 0.0], 
+                        [0.0, 0.0, 1.0]])
+    Bs[isX, 0] = P1[isX]; Bs[isX, 1] = 0.0 + 0.988; Bs[isX, 2] = i[isX] 
+    gris = np.linalg.solve(As, Bs)
+    grProj = gris[:,0] - gris[:,1]
+    riProj = gris[:,1] - gris[:,2]
+    return P1, P2, grProj, riProj
+
+def highPostStarsShape(trainClfs=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
-
     fontSize = 18
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
-    gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
-    X, XErr, Y = trainSet.getTrainSet(standardized=False)
-    mags = trainSet.getTrainMags()
-    #X = X[:5000]; XErr[:5000]; Y = Y[:5000]; mags = mags[:5000]
     clfs = []
-    for i, magBin in enumerate(magBins):
-        good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
-        ngStar, ngGal = gaussians[i]
-        clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
-        clf.fit(X[good], XErr[good], Y[good])
-        clfs.append(clf)
+    if trainClfs:
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
+        X, XErr, Y = trainSet.getTrainSet(standardized=False)
+        mags = trainSet.getTrainMags()
+        for i, magBin in enumerate(magBins):
+            good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsCols.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsCols.pkl', 'rb') as f:
+            clfs = pickle.load(f)
     X, XErr, Y = trainSet.getTestSet(standardized=False)
     mags = trainSet.getTestMags()
     exts = trainSet.getTestExts()
@@ -254,53 +338,110 @@ def highPostStarsShape():
     for i, magBin in enumerate(magBins):
         good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
         YProb[good] = clfs[i].predict_proba(X[good], XErr[good])
-    good = YProb > 0.9
-    fig = plt.figure()
-    plt.scatter(mags[good], exts[good], marker='.', s=1)
-    plt.xlabel('Mag_cmodel')
-    plt.ylabel('Mag_psf-Mag_cmodel')
-    plt.title('Objects with P(Star|Colors)>0.9')
-    fig.savefig('/u/garmilla/Desktop/colorStarsShapes.png', bbox_inches='tight')
+    good = np.logical_and(YProb > 0.9, mags < 24.0)
+    grSdss, riSdss, izSdss = _fromHscToSdss(trainSet.X[good,0], trainSet.X[good,1], trainSet.X[good,2])
+    magIHsc = mags[good]
+    magRHsc = magIHsc + trainSet.X[good, 1]
+    magGHsc = magRHsc + trainSet.X[good, 0]
+    magZHsc = magIHsc - trainSet.X[good, 2]
+    magGSdss = magGHsc - cgr[0] - cgr[1]*grSdss - cgr[2]*grSdss**2
+    magRSdss = magRHsc - cri[0] - cri[1]*riSdss - cri[2]*riSdss**2
+    magISdss = magIHsc - ciz[0] - ciz[1]*izSdss - ciz[2]*izSdss**2
+    magZSdss = magZHsc - czi[0] + czi[1]*izSdss - czi[2]*izSdss**2
+    P1, P2, grProj, riProj = _getPColors(magGSdss, magRSdss, magISdss)
+    #magRAbsSdss = _getAbsoluteMagR(riSdss)
+    magRAbsSdss = _getAbsoluteMagR(riProj)
+    #fig = plt.figure()
+    #plt.scatter(magRAbsSdss, magRAbsProj, marker='.', s=1)
+    #for i in range(len(grSdss)):
+    #    plt.plot([riSdss[i], riProj[i]], [magRAbsSdss[i], magRAbsProj[i]])
+    #plt.show()
+    #magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
+    magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riProj + cri[2]*riProj**2
+    dKpc = np.power(10.0, (magRSdss-magRAbsSdss)/5)/100
+    fig = plt.figure(figsize=(10, 12), dpi=120)
+    axExt = fig.add_subplot(3, 2, 1)
+    axExt.scatter(dKpc, exts[good], marker='.', s=1)
+    axExt.set_xlim((0.0, 100.0))
+    axExt.set_ylim((-0.01, 0.1))
+    axExt.set_xlabel('d (kpc)')
+    axExt.set_ylabel('Mag_psf-Mag_cmodel')
+    axMagAbs = fig.add_subplot(3, 2, 2)
+    axMagAbs.scatter(dKpc, magRAbsHsc, marker='.', s=1)
+    axMagAbs.set_xlim((0.0, 100.0))
+    axMagAbs.set_ylim((2.0, 12.0))
+    axMagAbs.set_xlabel('d (kpc)')
+    axMagAbs.set_ylabel('Absolute Magnitude HSC-R')
+    axCol = fig.add_subplot(3, 2, 3)
+    axCol.scatter(dKpc, trainSet.X[good,1], marker='.', s=1)
+    axCol.set_xlim((0.0, 100.0))
+    axCol.set_ylim((-0.2, 2.0))
+    axCol.set_xlabel('d (kpc)')
+    axCol.set_ylabel('r-i')
+    axMag = fig.add_subplot(3, 2, 4)
+    axMag.scatter(dKpc, magRHsc, marker='.', s=1)
+    axMag.set_xlim((0.0, 100.0))
+    #axMag.set_ylim((-0.2, 2.0))
+    axMag.set_xlabel('d (kpc)')
+    axMag.set_ylabel('Apparent Magnitude HSC-R')
+    axCc = fig.add_subplot(3, 2, 5)
+    axCc.scatter(trainSet.X[good,0], trainSet.X[good,1], marker='.', s=1)
+    axCc.set_xlabel('g-r')
+    axCc.set_ylabel('r-i')
+    axCc.set_xlim((-0.5, 2.5))
+    axCc.set_ylim((-0.2, 2.0))
+    axGr = fig.add_subplot(3, 2, 6)
+    axGr.scatter(trainSet.X[good,1], trainSet.X[good,2], marker='.', s=1)
+    axGr.set_xlabel('r-i')
+    axGr.set_ylabel('i-z')
+    #axGr.set_xlim((-0.5, 2.5))
+    #axGr.set_ylim((2.0, 12.0))
+    fig.suptitle('Objects with P(Star|Colors)>0.9')
+    fig.savefig('/u/garmilla/Desktop/colorStarsShapes.png', dpi=120, bbox_inches='tight')
     plt.show()
 
-def rc1Plots(rerun='Cosmos1', polyOrder=3, extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), yRange=(-20, 20), ylabel='rTrace',
-             featuresCuts={1:(None, 1.0)}):
+def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), 
+             yRange=(-20, 20), ylabel='rTrace', featuresCuts={1:(None, 1.0)}, asLogX=True, xlim=(5.0, 3000), xlabel='S/N',
+             singleBand=False, band='i'):
     if rerun == 'Cosmos1':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
     elif rerun == 'Cosmos2':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos2GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     elif rerun == 'Cosmos':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104CosmosGRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
 
     if rerun in ['Cosmos1', 'Cosmos2']:
-        trainSet = etl.extractTrainSet(cat, inputs=['snrPsf', extType], polyOrder=polyOrder)
+        trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], polyOrder=polyOrder, bands=['i'])
     elif rerun == 'Cosmos':
-        trainSet = etl.extractTrainSet(cat, inputs=['snrPsf', extType], bands=['g', 'r', 'i', 'z', 'y'], polyOrder=polyOrder)
+        if singleBand:
+            trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], bands=[band], polyOrder=polyOrder)
+        else:
+            trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], bands=['g', 'r', 'i', 'z', 'y'], polyOrder=polyOrder)
 
-    clf = dGauss.logisticFit(trainSet, featuresCuts=featuresCuts)
+    clf = dGauss.logisticFit(trainSet, featuresCuts=featuresCuts, n_jobs=1)
     train = etl.Training(trainSet, clf)
-    figPMap = train.plotPMap((5, 3000), ylim, 200, 200, xlabel='S/N', ylabel=ylabel, asLogX=True, cbLabel='pStar')
+    figPMap = train.plotPMap(xlim, ylim, 200, 200, xlabel=xlabel, ylabel=ylabel, asLogX=asLogX, cbLabel='pStar')
 
-    figPMap.savefig('/u/garmilla/pMap{0}.png'.format(rerun))
+    figPMap.savefig('/u/garmilla/pMap{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
     train.printPolynomial(['snr', 'magDiff'])
     if rerun in ['Cosmos1', 'Cosmos2']:
-        figBdy = train.plotBoundary(0, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=True, xlim=(5.0, 3000), yRange=yRange,
-                                    xlabel='S/N', ylabel=ylabel)
+        figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
+                                    xlabel=xlabel, ylabel=ylabel, frac=0.06)
     elif rerun == 'Cosmos':
-        figBdy = train.plotBoundary(0, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=True, xlim=(5.0, 3000), yRange=yRange,
-                                    xlabel='S/N', ylabel=ylabel, frac=0.006)
-    figBdy.savefig('/u/garmilla/boundary{0}.png'.format(rerun))
+        figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
+                                    xlabel=xlabel, ylabel=ylabel, frac=0.006)
+    figBdy.savefig('/u/garmilla/boundary{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
     mpl.rcParams['figure.figsize'] = 12, 6
     figScores = train.plotScores(magRange=(18.0, 26.0))
-    figScores.savefig('/u/garmilla/scores{0}.png'.format(rerun))
+    figScores.savefig('/u/garmilla/scores{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
 
 def magExtPlots(rerun='Cosmos1'):
     if rerun == 'Cosmos1':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1GRIZY.fits')
     elif rerun == 'Cosmos2':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos2GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     elif rerun == 'Cosmos':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104CosmosGRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
 
     #fig = utils.makeMagExPlot(cat, 'i', withLabels=True, trueSample=True, frac=0.04)
     fig = utils.makeExtHist(cat, 'i', withLabels=True, magCuts=[(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)], xlim=(-0.01, 0.5))
@@ -309,11 +450,11 @@ def magExtPlots(rerun='Cosmos1'):
 
 def extCutRoc(rerun='Cosmos1', extType='ext', snrCut=(10, 30), nConnect=20):
     if rerun == 'Cosmos1':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1GRIZY.fits')
     elif rerun == 'Cosmos2':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos2GRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     elif rerun == 'Cosmos':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104CosmosGRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
 
     if rerun in ['Cosmos1', 'Cosmos2']:
         trainSet = etl.extractTrainSet(cat, inputs=[extType], polyOrder=1)
@@ -378,7 +519,7 @@ def extCutRoc(rerun='Cosmos1', extType='ext', snrCut=(10, 30), nConnect=20):
     plt.show()
 
 def hstVsHscSize(snrCut=(10, 30)):
-    cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-136120151104Cosmos1Iiphot.fits')
+    cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1Iiphot.fits')
     extHsc = -2.5*etl.np.log10(cat.get('flux.psf.i')/cat.get('cmodel.flux.i'))
     extHst = cat.get('mu.max')-cat.get('mag.auto')
     snr = cat.get('flux.psf.i')/cat.get('flux.psf.err.i')
@@ -399,9 +540,14 @@ def hstVsHscSize(snrCut=(10, 30)):
 if __name__ == '__main__':
     #cutsPlots()
     #colExPlots()
-    #rc1Plots(rerun='Cosmos')
-    #rc1Plots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0), yRange=(-0.1, 0.50),
+    #rcPlots(rerun='Cosmos1')
+    #rcPlots(rerun='Cosmos1', snrType='mag', xRange=(23.0, 24.5), asLogX=False, xlim=(18.0, 26.0), xlabel='magnitude', polyOrder=3,
+    #        featuresCuts={1:(None, None)})
+    #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0), yRange=(-0.1, 0.50),
     #         ylabel='Mag_psf-Mag_cmodel', featuresCuts={1:(None, 0.1)})
+    #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', snrType='mag', ylim=(-0.02, 0.1), xRange=(18.0, 25.2), yRange=(-0.1, 0.50),
+    #        ylabel='mag_psf-mag_cmodel (HSC-I deep)', featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0), 
+    #        xlabel='mag_cmodel (HSC-I deep)')
     #magExtPlots()
     #extCutRoc()
     highPostStarsShape()

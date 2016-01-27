@@ -1093,7 +1093,7 @@ class Training(object):
 
         return xGrid, yGrid
 
-    def plotBoundary(self, rangeIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
+    def plotBoundary(self, rangeIndex, varIndex, xRange=None, nPoints=100, fig=None, overPlotData=False,
                      xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.03,
                      withTrueLabels=True, fontSize=18, asLogX=False):
 
@@ -1160,7 +1160,7 @@ class Training(object):
         X = self.trainingSet.applyPreTestTransform(X)
         Z = self.clf.predict_proba(X)[:,1]
         zz = Z.reshape(xx.shape)
-        fig = plt.figure()
+        fig = plt.figure(dpi=120)
         plt.pcolor(xx, yy, zz)
         cb = plt.colorbar()
         if xlabel is not None:
