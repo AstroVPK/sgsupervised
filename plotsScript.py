@@ -55,26 +55,26 @@ def cutsPlots():
     plt.show()
 
 def plotScores(mags, Y, YProb, threshold=0.5, linestyle='-', fig=None):
-    magsBins = etl.np.linspace(18.0, 26.0, num=30)
+    magsBins = np.linspace(18.0, 26.0, num=30)
     magsCenters = 0.5*(magsBins[:-1] + magsBins[1:])
-    complStars = etl.np.zeros(magsCenters.shape)
-    purityStars = etl.np.zeros(magsCenters.shape)
-    complGals = etl.np.zeros(magsCenters.shape)
-    purityGals = etl.np.zeros(magsCenters.shape)
-    YPred = etl.np.logical_not(YProb < threshold)
+    complStars = np.zeros(magsCenters.shape)
+    purityStars = np.zeros(magsCenters.shape)
+    complGals = np.zeros(magsCenters.shape)
+    purityGals = np.zeros(magsCenters.shape)
+    YPred = np.logical_not(YProb < threshold)
     for i in range(len(magsCenters)):
-        magCut = etl.np.logical_and(mags > magsBins[i], mags < magsBins[i+1])
+        magCut = np.logical_and(mags > magsBins[i], mags < magsBins[i+1])
         predCut = YPred[magCut]; truthCut = Y[magCut]
-        goodStars = etl.np.logical_and(predCut, truthCut)
-        goodGals = etl.np.logical_and(etl.np.logical_not(predCut), etl.np.logical_not(truthCut))
-        if etl.np.sum(truthCut) > 0:
-            complStars[i] = float(etl.np.sum(goodStars))/etl.np.sum(truthCut)
-        if etl.np.sum(predCut) > 0:
-            purityStars[i] = float(etl.np.sum(goodStars))/etl.np.sum(predCut)
-        if len(truthCut) - etl.np.sum(truthCut) > 0:
-            complGals[i] = float(etl.np.sum(goodGals))/(len(truthCut) - etl.np.sum(truthCut))
-        if len(predCut) - etl.np.sum(predCut) > 0:
-            purityGals[i] = float(etl.np.sum(goodGals))/(len(predCut) - etl.np.sum(predCut))
+        goodStars = np.logical_and(predCut, truthCut)
+        goodGals = np.logical_and(np.logical_not(predCut), np.logical_not(truthCut))
+        if np.sum(truthCut) > 0:
+            complStars[i] = float(np.sum(goodStars))/np.sum(truthCut)
+        if np.sum(predCut) > 0:
+            purityStars[i] = float(np.sum(goodStars))/np.sum(predCut)
+        if len(truthCut) - np.sum(truthCut) > 0:
+            complGals[i] = float(np.sum(goodGals))/(len(truthCut) - np.sum(truthCut))
+        if len(predCut) - np.sum(predCut) > 0:
+            purityGals[i] = float(np.sum(goodGals))/(len(predCut) - np.sum(predCut))
 
     legendLabel = 'P(Star)={0}'.format(threshold)
     if fig is None:
@@ -148,7 +148,7 @@ def colExPlots():
     X = X[:5000]; XErr[:5000]; Y = Y[:5000]; mags = mags[:5000]
     clfs = []
     for i, magBin in enumerate(magBins):
-        good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
+        good = np.logical_and(magBin[0] < mags, mags < magBin[1])
         ngStar, ngGal = gaussians[i]
         clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
         clf.fit(X[good], XErr[good], Y[good])
@@ -160,19 +160,19 @@ def colExPlots():
     X, XErr, Y = trainSet.getTrainSet(standardized=False)
     mags = trainSet.getTrainMags()
     X = X[:300000]; XErr[:300000]; Y = Y[:300000]; mags = mags[:300000]
-    YProb = etl.np.zeros(Y.shape)
-    YPred = etl.np.zeros(Y.shape, dtype=bool)
+    YProb = np.zeros(Y.shape)
+    YPred = np.zeros(Y.shape, dtype=bool)
     for i, magBin in enumerate(magBins):
-        good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
+        good = np.logical_and(magBin[0] < mags, mags < magBin[1])
         YProb[good] = clfs[i].predict_proba(X[good], XErr[good])
         YPred[good] = clfs[i].predict(X[good], XErr[good])
         mpl.rcParams['figure.figsize'] = 16, 10
         plotPosterior(X[good][Y[good]], YPred[good][Y[good]], magBin=magBin)
         #plt.tight_layout()
-        #plotPosterior(X[good][etl.np.logical_not(Y[good])], YPred[good][etl.np.logical_not(Y[good])])
+        #plotPosterior(X[good][np.logical_not(Y[good])], YPred[good][np.logical_not(Y[good])])
         plt.savefig('/u/garmilla/Desktop/colorColorStars{0}-{1}.png'.format(magBin[0], magBin[1]), bbox_inches='tight')
         #plt.savefig('/u/garmilla/Desktop/colorColorGalaxies{0}-{1}.png'.format(magBin[0], magBin[1]), bbox_inches='tight')
-    print "Score={0}".format(etl.np.sum(YPred == Y)*1.0/len(Y))
+    print "Score={0}".format(np.sum(YPred == Y)*1.0/len(Y))
 
 
     figScores = plotScores(mags, Y, YProb)
@@ -322,7 +322,7 @@ def plotPostMarginals(trainClfs=False):
         X, XErr, Y = trainSet.getTrainSet(standardized=False)
         mags = trainSet.getTrainMags()
         for i, magBin in enumerate(magBins):
-            good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
             ngStar, ngGal = gaussians[i]
             clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
             clf.fit(X[good], XErr[good], Y[good])
@@ -339,7 +339,7 @@ def plotPostMarginals(trainClfs=False):
     colsLims = [[(-0.5, 2.5), (-0.5, 3.5)], [(-0.5, 3.5), (-0.5, 1.5)], [(-0.5, 1.5), (-0.5, 1.0)]]
     for j, clf in enumerate(clfs):
         fig = plt.figure(figsize=(20, 12), dpi=120)
-        good = etl.np.logical_and(magBins[j][0] < mags, mags < magBins[j][1])
+        good = np.logical_and(magBins[j][0] < mags, mags < magBins[j][1])
         for i, cols in enumerate(colsList):
             clfMarginal = clf.getMarginalClf(cols=cols)
             axCmap = fig.add_subplot(2, 3, i+1)
@@ -360,7 +360,8 @@ def plotPostMarginals(trainClfs=False):
                 if Y[good][k]:
                     axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='blue')
                 else:
-                    axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='red')
+                    pass
+                    #axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='red')
             axScat.set_xlim(colsLims[i][0])
             axScat.set_ylim(colsLims[i][1])
             axScat.set_xlabel(cNames[i])
@@ -381,7 +382,7 @@ def highPostStarsShape(trainClfs=False):
         X, XErr, Y = trainSet.getTrainSet(standardized=False)
         mags = trainSet.getTrainMags()
         for i, magBin in enumerate(magBins):
-            good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
             ngStar, ngGal = gaussians[i]
             clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
             clf.fit(X[good], XErr[good], Y[good])
@@ -394,16 +395,26 @@ def highPostStarsShape(trainClfs=False):
     X, XErr, Y = trainSet.getTestSet(standardized=False)
     mags = trainSet.getTestMags()
     exts = trainSet.getTestExts()
-    YProb = etl.np.zeros(Y.shape)
+    YProb = np.zeros(Y.shape)
+    YProbGri = np.zeros(Y.shape)
+    YProbRiz = np.zeros(Y.shape)
     for i, magBin in enumerate(magBins):
-        good = etl.np.logical_and(magBin[0] < mags, mags < magBin[1])
-        YProb[good] = clfs[i].predict_proba(X[good], XErr[good])
-    good = np.logical_and(YProb > 0.9, mags < 24.0)
-    grSdss, riSdss, izSdss = _fromHscToSdss(trainSet.X[good,0], trainSet.X[good,1], trainSet.X[good,2])
+        clfMarginalGri = clfs[i].getMarginalClf(cols=[0, 1])
+        clfMarginalRiz = clfs[i].getMarginalClf(cols=[1, 2])
+        magCut = np.logical_and(magBin[0] < mags, mags < magBin[1])
+        YProb[magCut] = clfs[i].predict_proba(X[magCut], XErr[magCut])
+        rowsV, colsV = np.meshgrid([0, 1], [0, 1], indexing='ij')
+        YProbGri[magCut] = clfMarginalGri.predict_proba(X[magCut][:, [0, 1]], XErr[magCut][:, rowsV, colsV])
+        rowsV, colsV = np.meshgrid([1, 2], [1, 2], indexing='ij')
+        YProbRiz[magCut] = clfMarginalRiz.predict_proba(X[magCut][:, [1, 2]], XErr[magCut][:, rowsV, colsV])
+    good = np.logical_and(YProb > 0.9, mags < 26.0)
+    grSdss, riSdss, izSdss = _fromHscToSdss(X[good,0], X[good,1], X[good,2])
+    YProbGri = YProbGri[good]
+    YProbRiz = YProbRiz[good]
     magIHsc = mags[good]
-    magRHsc = magIHsc + trainSet.X[good, 1]
-    magGHsc = magRHsc + trainSet.X[good, 0]
-    magZHsc = magIHsc - trainSet.X[good, 2]
+    magRHsc = magIHsc + X[good, 1]
+    magGHsc = magRHsc + X[good, 0]
+    magZHsc = magIHsc - X[good, 2]
     magGSdss = magGHsc - cgr[0] - cgr[1]*grSdss - cgr[2]*grSdss**2
     magRSdss = magRHsc - cri[0] - cri[1]*riSdss - cri[2]*riSdss**2
     magISdss = magIHsc - ciz[0] - ciz[1]*izSdss - ciz[2]*izSdss**2
@@ -420,53 +431,185 @@ def highPostStarsShape(trainClfs=False):
     magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riProj + cri[2]*riProj**2
     dKpc = np.power(10.0, (magRSdss-magRAbsSdss)/5)/100
     fig = plt.figure(figsize=(10, 12), dpi=120)
+    #fig = plt.figure(figsize=(24, 12), dpi=120)
     axExt = fig.add_subplot(3, 2, 1)
     axExt.scatter(dKpc, exts[good], marker='.', s=1)
-    axExt.set_xlim((0.0, 100.0))
+    axExt.set_xlim((0.0, 50.0))
     axExt.set_ylim((-0.01, 0.1))
     axExt.set_xlabel('d (kpc)')
     axExt.set_ylabel('Mag_psf-Mag_cmodel')
     axMagAbs = fig.add_subplot(3, 2, 2)
     axMagAbs.scatter(dKpc, magRAbsHsc, marker='.', s=1)
-    axMagAbs.set_xlim((0.0, 100.0))
-    axMagAbs.set_ylim((2.0, 12.0))
+    axMagAbs.set_xlim((0.0, 50.0))
+    axMagAbs.set_ylim((4.0, 16.0))
     axMagAbs.set_xlabel('d (kpc)')
     axMagAbs.set_ylabel('Absolute Magnitude HSC-R')
     axCol = fig.add_subplot(3, 2, 3)
-    axCol.scatter(dKpc, trainSet.X[good,1], marker='.', s=1)
-    axCol.set_xlim((0.0, 100.0))
+    axCol.scatter(dKpc, X[good,1], marker='.', s=1)
+    axCol.set_xlim((0.0, 50.0))
     axCol.set_ylim((-0.2, 2.0))
     axCol.set_xlabel('d (kpc)')
     axCol.set_ylabel('r-i')
     axMag = fig.add_subplot(3, 2, 4)
     axMag.scatter(dKpc, magRHsc, marker='.', s=1)
-    axMag.set_xlim((0.0, 100.0))
+    axMag.set_xlim((0.0, 50.0))
     #axMag.set_ylim((-0.2, 2.0))
     axMag.set_xlabel('d (kpc)')
     axMag.set_ylabel('Apparent Magnitude HSC-R')
-    axCc = fig.add_subplot(3, 2, 5)
-    axCc.scatter(trainSet.X[good,0], trainSet.X[good,1], marker='.', s=1)
-    axCc.set_xlabel('g-r')
-    axCc.set_ylabel('r-i')
-    axCc.set_xlim((-0.5, 2.5))
-    axCc.set_ylim((-0.2, 2.0))
-    axGr = fig.add_subplot(3, 2, 6)
-    axGr.scatter(trainSet.X[good,1], trainSet.X[good,2], marker='.', s=1)
-    axGr.set_xlabel('r-i')
-    axGr.set_ylabel('i-z')
-    #axGr.set_xlim((-0.5, 2.5))
-    #axGr.set_ylim((2.0, 12.0))
+    #redColor = np.logical_and(X[good, 0] < 1.0, X[good, 1] > 0.5*X[good, 0])
+    #redSample = np.random.choice(np.sum(redColor))
+    #sampleGr = X[good][redColor][redSample][0]
+    #sampleRi = X[good][redColor][redSample][1]
+    #sampleIz = X[good][redColor][redSample][2]
+    #sampleZy = X[good][redColor][redSample][3]
+    #sampleMag = mags[good][redColor][redSample]
+    #for idxMagBin, magBin in enumerate(magBins):
+    #    if np.logical_and(sampleMag > magBin[0], sampleMag < magBin[1]):
+    #        break
+    #sampleClf = clfs[idxMagBin]
+    #sampleXErr = XErr[good][redColor][redSample]
+    #print sampleXErr
+    #circGri = plt.Circle((sampleGr, sampleRi), radius=0.02, color='magenta', fill=False)
+    #circGriMarg = plt.Circle((sampleGr, sampleRi), radius=0.02, color='magenta', fill=False)
+    #circRiz = plt.Circle((sampleRi, sampleIz), radius=0.02, color='magenta', fill=False)
+    #circRizMarg = plt.Circle((sampleRi, sampleIz), radius=0.02, color='magenta', fill=False)
+    #circIzy = plt.Circle((sampleIz, sampleZy), radius=0.02, color='magenta', fill=False)
+    #circIzyMarg = plt.Circle((sampleIz, sampleZy), radius=0.02, color='magenta', fill=False)
+    #blackColor = np.logical_not(redColor)
+    axGr = fig.add_subplot(3, 2, 5)
+    #axGr = fig.add_subplot(2, 3, 1)
+    #sc = axGr.scatter(X[good][blackColor,0], X[good][blackColor,1], c='black', marker='.', s=5, edgecolors="none")
+    #sc = axGr.scatter(X[good][redColor,0], X[good][redColor,1], c='red', marker='.', s=5, edgecolors="none")
+    #axGr.add_patch(circGri)
+    sc = axGr.scatter(X[good,0], X[good,1], c=YProbGri, marker='.', s=2, edgecolors="none")
+    cb = fig.colorbar(sc, ax=axGr)
+    axGr.set_xlabel('g-r')
+    axGr.set_ylabel('r-i')
+    axGr.set_xlim((-0.5, 2.5))
+    axGr.set_ylim((-0.2, 2.0))
+    #axGrMarg = fig.add_subplot(2, 3, 4)
+    #grLim = axGr.get_xlim()
+    #riLim = axGr.get_ylim()
+    #xRange = np.linspace(grLim[0], grLim[1], num=100)
+    #yRange = np.linspace(riLim[0], riLim[1], num=100)
+    #Xgrid, Ygrid = np.meshgrid(xRange, yRange)
+    #XInput = np.vstack((Xgrid.flatten(), Ygrid.flatten())).T
+    #XInputErr = np.zeros((XInput.shape + (XInput.shape[-1],)))
+    #rowsV, colsV = np.meshgrid([0, 1], [0, 1], indexing='ij')
+    #XInputErr[:] = sampleXErr[rowsV, colsV]
+    #clfMarginal = sampleClf.getMarginalClf(cols=[0, 1])
+    #Z = clfMarginal.predict_proba(XInput, XInputErr)
+    #Z = Z.reshape(Xgrid.shape)
+    #im = axGrMarg.imshow(Z, extent=[xRange[0], xRange[-1], yRange[0], yRange[-1]], aspect='auto', origin='lower')
+    #cb = plt.colorbar(im)
+    #axGrMarg.add_patch(circGriMarg)
+    #axGrMarg.set_xlabel('g-r')
+    #axGrMarg.set_ylabel('r-i')
+    #axGrMarg.set_xlim(grLim)
+    #axGrMarg.set_ylim(riLim)
+    axRi = fig.add_subplot(3, 2, 6)
+    #axRi = fig.add_subplot(2, 3, 2)
+    #sc = axRi.scatter(X[good][blackColor,1], X[good][blackColor,2], c='black', marker='.', s=5, edgecolors="none")
+    #sc = axRi.scatter(X[good][redColor,1], X[good][redColor,2], c='red', marker='.', s=5, edgecolors="none")
+    #axRi.add_patch(circRiz)
+    sc = axRi.scatter(X[good,1], X[good,2], c=YProbRiz,  marker='.', s=2, edgecolors="none")
+    cb = fig.colorbar(sc, ax=axRi)
+    axRi.set_xlabel('r-i')
+    axRi.set_ylabel('i-z')
+    axRi.set_xlim((-0.2, 2.0))
+    axRi.set_ylim((-0.2, 1.5))
+    #axRiMarg = fig.add_subplot(2, 3, 5)
+    #riLim = axRi.get_xlim()
+    #izLim = axRi.get_ylim()
+    #xRange = np.linspace(riLim[0], riLim[1], num=100)
+    #yRange = np.linspace(izLim[0], izLim[1], num=100)
+    #Xgrid, Ygrid = np.meshgrid(xRange, yRange)
+    #XInput = np.vstack((Xgrid.flatten(), Ygrid.flatten())).T
+    #XInputErr = np.zeros((XInput.shape + (XInput.shape[-1],)))
+    #rowsV, colsV = np.meshgrid([1, 2], [1, 2], indexing='ij')
+    #XInputErr[:] = sampleXErr[rowsV, colsV]
+    #clfMarginal = sampleClf.getMarginalClf(cols=[1, 2])
+    #Z = clfMarginal.predict_proba(XInput, XInputErr)
+    #Z = Z.reshape(Xgrid.shape)
+    #im = axRiMarg.imshow(Z, extent=[xRange[0], xRange[-1], yRange[0], yRange[-1]], aspect='auto', origin='lower')
+    #cb = plt.colorbar(im)
+    #axRiMarg.add_patch(circRizMarg)
+    #axRiMarg.set_xlabel('r-i')
+    #axRiMarg.set_ylabel('i-z')
+    #axRiMarg.set_xlim(riLim)
+    #axRiMarg.set_ylim(izLim)
+    #axIz = fig.add_subplot(2, 3, 3)
+    #sc = axIz.scatter(X[good][blackColor,2], X[good][blackColor,3], c='black', marker='.', s=5, edgecolors="none")
+    #sc = axIz.scatter(X[good][redColor,2], X[good][redColor,3], c='red', marker='.', s=5, edgecolors="none")
+    #axIz.add_patch(circIzy)
+    #axIz.set_xlabel('i-z')
+    #axIz.set_ylabel('z-y')
+    #axIz.set_xlim((-0.2, 1.5))
+    #axIz.set_ylim((-1.0, 1.0))
+    #axIzMarg = fig.add_subplot(2, 3, 6)
+    #izLim = axIz.get_xlim()
+    #zyLim = axIz.get_ylim()
+    #xRange = np.linspace(izLim[0], izLim[1], num=100)
+    #yRange = np.linspace(zyLim[0], zyLim[1], num=100)
+    #Xgrid, Ygrid = np.meshgrid(xRange, yRange)
+    #XInput = np.vstack((Xgrid.flatten(), Ygrid.flatten())).T
+    #XInputErr = np.zeros((XInput.shape + (XInput.shape[-1],)))
+    #rowsV, colsV = np.meshgrid([2, 3], [2, 3], indexing='ij')
+    #XInputErr[:] = sampleXErr[rowsV, colsV]
+    #clfMarginal = sampleClf.getMarginalClf(cols=[2, 3])
+    #Z = clfMarginal.predict_proba(XInput, XInputErr)
+    #Z = Z.reshape(Xgrid.shape)
+    #im = axIzMarg.imshow(Z, extent=[xRange[0], xRange[-1], yRange[0], yRange[-1]], aspect='auto', origin='lower')
+    #cb = plt.colorbar(im)
+    #axIzMarg.add_patch(circIzyMarg)
+    #axIzMarg.set_xlabel('i-z')
+    #axIzMarg.set_ylabel('z-y')
+    #axIzMarg.set_xlim(izLim)
+    #axIzMarg.set_ylim(zyLim)
     fig.suptitle('Objects with P(Star|Colors)>0.9')
     dirHome = os.path.expanduser('~')
     fileFig = os.path.join(dirHome, 'Desktop/colorStarsShapes.png')
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     plt.show()
 
+def morphStarsPlotsSingle(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.5, 1.0), xRange=(23.5, 24.5), 
+                          yRange=(-400000, 400000), ylabel='rTrace', asLogX=False, xlim=(18.0, 27.0), xlabel='Magnitude'):
+    trains = {}
+    for band in ['g', 'r', 'i', 'z', 'y']:
+        with open('trainSetHsmSingleBand{0}.pkl'.format(band.upper()), 'rb') as f:
+            trainSet = pickle.load(f)
+        clf = dGauss.logisticFit(trainSet, featuresCuts=featuresCuts, n_jobs=1, doCV=False, C=0.01, class_weight='auto')
+        train = etl.Training(trainSet, clf)
+        figPMap = train.plotPMap(xlim, ylim, 200, 200, xlabel=xlabel+band.upper(), ylabel=ylabel+band.upper(), asLogX=asLogX, cbLabel='pStar')
+        #figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
+        #                            xlabel=xlabel+band.upper(), ylabel=ylabel+band.upper(), frac=0.05)
+        trains[band] = train
+    plt.show()
+    return trains
+
+def morphStarsPlotsMulti(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.4, 1), xRange=(50.0, 3000.0), 
+                         yRange=(-4, 4), ylabel='rTrace', asLogX=True, xlim=(5.0, 3000), xlabel='S/N'):
+    with open('trainSetHsmMultiBand.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    clf = dGauss.logisticFit(trainSet, featuresCuts=featuresCuts, n_jobs=1, doCV=False, C=100.0)
+    train = etl.Training(trainSet, clf)
+    figPMap = train.plotPMap(xlim, ylim, 200, 200, xlabel=xlabel, ylabel=ylabel, asLogX=asLogX, cbLabel='pStar')
+
+    figPMap.savefig('/u/garmilla/Desktop/pMapHsmMulti.png', dpi=120, bbox_inches='tight')
+    train.printPolynomial(['snrPsf', 'rDet'])
+    figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
+                                xlabel=xlabel, ylabel=ylabel, frac=0.006)
+    figBdy.savefig('/u/garmilla/Desktop/boundaryHscMulti.png', dpi=120, bbox_inches='tight')
+    mpl.rcParams['figure.figsize'] = 12, 6
+    figScores = train.plotScores(magRange=(18.0, 26.0))
+    figScores.savefig('/u/garmilla/Desktop/scoresHsmMulti.png', dpi=120, bbox_inches='tight')
+    return train
+
 def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), 
-             yRange=(-20, 20), ylabel='rTrace', featuresCuts={1:(None, 1.0)}, asLogX=True, xlim=(5.0, 3000), xlabel='S/N',
-             singleBand=False, band='i'):
+            yRange=(-20, 20), ylabel='rTrace', featuresCuts={1:(None, 1.0)}, asLogX=True, xlim=(5.0, 3000), xlabel='S/N',
+            singleBand=False, band='i'):
     if rerun == 'Cosmos1':
-        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1GRIZY.fits')
     elif rerun == 'Cosmos2':
         cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     elif rerun == 'Cosmos':
@@ -479,12 +622,14 @@ def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDecon
             trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], bands=[band], polyOrder=polyOrder)
         else:
             trainSet = etl.extractTrainSet(cat, inputs=[snrType, extType], bands=['g', 'r', 'i', 'z', 'y'], polyOrder=polyOrder)
+            with open('trainSetHsmMultiBand.pkl', 'wb') as f:
+                pickle.dump(trainSet, f)
 
     clf = dGauss.logisticFit(trainSet, featuresCuts=featuresCuts, n_jobs=1)
     train = etl.Training(trainSet, clf)
     figPMap = train.plotPMap(xlim, ylim, 200, 200, xlabel=xlabel, ylabel=ylabel, asLogX=asLogX, cbLabel='pStar')
 
-    figPMap.savefig('/u/garmilla/pMap{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
+    figPMap.savefig('/u/garmilla/Desktop/pMap{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
     train.printPolynomial(['snr', 'magDiff'])
     if rerun in ['Cosmos1', 'Cosmos2']:
         figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
@@ -492,10 +637,10 @@ def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDecon
     elif rerun == 'Cosmos':
         figBdy = train.plotBoundary(0, 1, xRange=xRange, overPlotData=True, ylim=ylim, asLogX=asLogX, xlim=xlim, yRange=yRange,
                                     xlabel=xlabel, ylabel=ylabel, frac=0.006)
-    figBdy.savefig('/u/garmilla/boundary{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
+    figBdy.savefig('/u/garmilla/Desktop/boundary{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
     mpl.rcParams['figure.figsize'] = 12, 6
     figScores = train.plotScores(magRange=(18.0, 26.0))
-    figScores.savefig('/u/garmilla/scores{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
+    figScores.savefig('/u/garmilla/Desktop/scores{0}.png'.format(rerun), dpi=120, bbox_inches='tight')
 
 def magExtPlots(rerun='Cosmos1'):
     if rerun == 'Cosmos1':
@@ -526,39 +671,39 @@ def extCutRoc(rerun='Cosmos1', extType='ext', snrCut=(10, 30), nConnect=20):
     clf = LinearSVC()
     X, Y = trainSet.getAllSet(standardized=False)
     snrs = trainSet.snrs
-    inSnrCut = etl.np.logical_and(snrs > snrCut[0], snrs < snrCut[1])
+    inSnrCut = np.logical_and(snrs > snrCut[0], snrs < snrCut[1])
     clf.fit(X, Y)
 
-    cutRange = etl.np.linspace(-0.02, 2.0, num=500)
-    xxStars = etl.np.zeros(cutRange.shape)
-    yyStars = etl.np.zeros(cutRange.shape)
-    xxGals = etl.np.zeros(cutRange.shape)
-    yyGals = etl.np.zeros(cutRange.shape)
+    cutRange = np.linspace(-0.02, 2.0, num=500)
+    xxStars = np.zeros(cutRange.shape)
+    yyStars = np.zeros(cutRange.shape)
+    xxGals = np.zeros(cutRange.shape)
+    yyGals = np.zeros(cutRange.shape)
 
     Xcut = X[inSnrCut]; Ycut = Y[inSnrCut]
     for i, cut in enumerate(cutRange):
         clf.coef_[0][0] = -1.0
         clf.intercept_[0] = cut
         Ypred = clf.predict(Xcut)
-        goodStars = etl.np.logical_and(Ypred, Ycut)
-        goodGals = etl.np.logical_and(etl.np.logical_not(Ypred), etl.np.logical_not(Ycut))
-        if etl.np.sum(Ycut) > 0:
-            xxStars[i] = float(etl.np.sum(goodStars))/etl.np.sum(Ycut)
-        if etl.np.sum(Ypred) > 0:
-            yyStars[i] = float(etl.np.sum(goodStars))/etl.np.sum(Ypred)
-        if len(Ycut) - etl.np.sum(Ycut) > 0:
-            xxGals[i] = float(etl.np.sum(goodGals))/(len(Ycut) - etl.np.sum(Ycut))
-        if len(Ypred) - etl.np.sum(Ypred) > 0:
-            yyGals[i] = float(etl.np.sum(goodGals))/(len(Ypred) - etl.np.sum(Ypred))
+        goodStars = np.logical_and(Ypred, Ycut)
+        goodGals = np.logical_and(np.logical_not(Ypred), np.logical_not(Ycut))
+        if np.sum(Ycut) > 0:
+            xxStars[i] = float(np.sum(goodStars))/np.sum(Ycut)
+        if np.sum(Ypred) > 0:
+            yyStars[i] = float(np.sum(goodStars))/np.sum(Ypred)
+        if len(Ycut) - np.sum(Ycut) > 0:
+            xxGals[i] = float(np.sum(goodGals))/(len(Ycut) - np.sum(Ycut))
+        if len(Ypred) - np.sum(Ypred) > 0:
+            yyGals[i] = float(np.sum(goodGals))/(len(Ypred) - np.sum(Ypred))
 
     fig = plt.figure(figsize=(16, 6))
     fig.suptitle('{0} < S/N < {1}'.format(*snrCut), fontsize=18)
     axHist = fig.add_subplot(1, 2, 1)
     axRoc = fig.add_subplot(1, 2, 2)
 
-    hist, bins = etl.np.histogram(Xcut[:,0], bins=50, range=(-0.05, 0.5))
+    hist, bins = np.histogram(Xcut[:,0], bins=50, range=(-0.05, 0.5))
     dataStars = Xcut[:,0][Ycut]
-    dataGals = Xcut[:,0][etl.np.logical_not(Ycut)]
+    dataGals = Xcut[:,0][np.logical_not(Ycut)]
     axHist.hist(dataStars, bins=bins, histtype='step', color='blue', label='Stars', linewidth=2)
     axHist.hist(dataGals, bins=bins, histtype='step', color='red', label='Galaxies', linewidth=2)
     axHist.set_xlabel('mag_psf-mag_cmodel', fontsize=16)
@@ -582,10 +727,10 @@ def extCutRoc(rerun='Cosmos1', extType='ext', snrCut=(10, 30), nConnect=20):
 
 def hstVsHscSize(snrCut=(10, 30)):
     cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1Iiphot.fits')
-    extHsc = -2.5*etl.np.log10(cat.get('flux.psf.i')/cat.get('cmodel.flux.i'))
+    extHsc = -2.5*np.log10(cat.get('flux.psf.i')/cat.get('cmodel.flux.i'))
     extHst = cat.get('mu.max')-cat.get('mag.auto')
     snr = cat.get('flux.psf.i')/cat.get('flux.psf.err.i')
-    good = etl.np.logical_and(snr > snrCut[0], snr < snrCut[1])
+    good = np.logical_and(snr > snrCut[0], snr < snrCut[1])
 
     fig = plt.figure()
     plt.scatter(extHst[good], extHsc[good], marker='.', s=1)
