@@ -205,6 +205,8 @@ def getShape(cat, band, type, deconvType='trace', fallBack=True):
             elif deconvType == 'trace':
                 #rDet[i] = (xx + yy)/2
                 rDet[i] = xx + yy
+            elif deconvType == 'traceNorm':
+                rDet[i] = (xx + yy)/(momentsPsf.getIxx() + momentsPsf.getIyy())
             else:
                 raise ValueError('Deconvolution type {0} not implemented'.format(deconvType))
         else:
