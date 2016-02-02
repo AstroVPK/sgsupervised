@@ -276,7 +276,7 @@ def linearFit(trainingSet, n_jobs=4, magMin=None, magMax=None, mode='train', **e
     print "score=", score
     return clf
 
-def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=None, mode='train', **estKargs):
+def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=None, mode='train', doCV=True, **estKargs):
     if mode == 'train':
         X, Y = trainingSet.getTrainSet()
         mags = trainingSet.getTrainMags()
@@ -309,9 +309,13 @@ def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=No
         mags = mags[good]
     estimator = LogisticRegression(**estKargs)
     param_grid = {'C':[ 1.0e-2, 1.0e-1, 1.0, 1.0e1, 1.0e2]}
-    clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
+    if doCV:
+        clf = GridSearchCV(estimator, param_grid, n_jobs=n_jobs)
+    else:
+        clf = estimator
     clf.fit(X, Y)
-    print clf.best_params_
+    if doCV:
+        print clf.best_params_
     if mode == 'train':
         X, Y = trainingSet.getTestSet()
         mags = trainingSet.getTestMags()
@@ -339,7 +343,10 @@ def logisticFit(trainingSet, n_jobs=4, magMin=None, magMax=None, featuresCuts=No
         weightGal /= weightStar + weightGal
         weights = np.zeros(Y.shape)
         weights[Y] = weightStar; weights[np.logical_not(Y)] = weightGal
-        score = clf.best_estimator_.score(X, Y, sample_weight=weights)
+        if doCV:
+            score = clf.best_estimator_.score(X, Y, sample_weight=weights)
+        else:
+            score = clf.score(X, Y, sample_weight=weights)
         print "score=", score
     return clf
 
