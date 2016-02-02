@@ -128,6 +128,10 @@ def getExtHsmDeconv(cat, band='i'):
     q, ext = sgsvm.getShape(cat, band, 'hsmDeconv')
     return ext
 
+def getExtHsmDeconvNorm(cat, band='i'):
+    q, ext = sgsvm.getShape(cat, band, 'hsmDeconv', deconvType='traceNorm')
+    return ext
+
 def getSnr(cat, band='i'):
     f = cat.get('cmodel.flux.'+band)
     fErr = cat.get('cmodel.flux.err.'+band)
@@ -192,6 +196,7 @@ inputsDict = {'id' : getId,
               'extKron' : getExtKron,
               'extHsm' : getExtHsm,
               'extHsmDeconv' : getExtHsmDeconv,
+              'extHsmDeconvNorm' : getExtHsmDeconvNorm,
               'snr' : getSnr,
               'snrPsf' : getSnrPsf,
               'snrAp' : getSnrAp,
@@ -726,16 +731,16 @@ class Training(object):
         if hasattr(self.estimator, 'coef_'):
             self._computePhysicalFit()
 
-    def predictTrainLabels(self):
-        X = self.trainingSet.getTrainSet()[0]
+    def predictTrainLabels(self, standardized=True):
+        X = self.trainingSet.getTrainSet(standardized=standardized)[0]
         return self.clf.predict(X)
 
-    def predictTestLabels(self):
-        X = self.trainingSet.getTestSet()[0]
+    def predictTestLabels(self, standardized=True):
+        X = self.trainingSet.getTestSet(standardized=standardized)[0]
         return self.clf.predict(X)
 
-    def predictAllLabels(self):
-        X = self.trainingSet.getAllSet()[0]
+    def predictAllLabels(self, standardized=True):
+        X = self.trainingSet.getAllSet(standardized=standardized)[0]
         return self.clf.predict(X)
 
     def _computePhysicalFit(self):
@@ -804,7 +809,7 @@ class Training(object):
             print "WARNING: I can't print the physical fit of a {0}".format(self.estimator.__class__)
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
-                   magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel=''):
+                   magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel='', standardized=True):
         if sType == 'test':
             mags = self.trainingSet.mags[self.trainingSet.testIndexes]
         elif sType == 'train':
@@ -824,13 +829,13 @@ class Training(object):
         complGals = np.zeros(magsCenters.shape)
         purityGals = np.zeros(magsCenters.shape)
         if sType == 'test':
-            pred = self.predictTestLabels()
+            pred = self.predictTestLabels(standardized=standardized)
             truth = self.trainingSet.getTestSet()[1]
         elif sType == 'train':
-            pred = self.predictTrainLabels()
+            pred = self.predictTrainLabels(standardized=standardized)
             truth = self.trainingSet.getTrainSet()[1]
         elif sType == 'all':
-            pred = self.predictAllLabels()
+            pred = self.predictAllLabels(standardized=standardized)
             truth = self.trainingSet.getAllSet()[1]
         for i in range(nBins):
             magCut = np.logical_and(mags > magsBins[i], mags < magsBins[i+1])
@@ -1178,4 +1183,36 @@ class Training(object):
             ax.set_xscale('log')
         ax.set_xlim(xRange)
         ax.set_ylim(yRange)
+        return fig
+
+class BoxClf(object):
+
+    def __init__(self):
+        self._xBdy = 0.0
+        self._yBdy = 0.0
+
+    def _setX(self, value):
+        self._xBdy = value
+
+    def _setY(self, value):
+        self._yBdy = value
+
+    def predict(self, X):
+       return np.logical_and(X[:,0] < self._xBdy, X[:, 1] < self._yBdy)
+
+    def plotBox(self, trainSet=None, frac=0.01, xlim=(18.0, 26.0), ylim=(-0.4, 1.0)):
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        if trainSet is not None:
+            size = int(len(trainSet.X)*frac)
+            choice = np.random.choice(len(trainSet.X), size=size)
+            for idx in choice:
+                if trainSet.Y[idx]:
+                    plt.plot(trainSet.X[idx, 0], trainSet.X[idx, 1], marker='.', markersize=1, color='blue')
+                else:
+                    plt.plot(trainSet.X[idx, 0], trainSet.X[idx, 1], marker='.', markersize=1, color='red')
+        ax.plot([self._xBdy, self._xBdy], [ylim[0], self._yBdy], color='black')
+        ax.plot([xlim[0], self._xBdy], [self._yBdy, self._yBdy], color='black')
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
         return fig
