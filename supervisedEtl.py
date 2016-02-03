@@ -309,6 +309,14 @@ class TrainingSet(object):
         self.testIndexes = (indexes[self.nTrain:self.nTotal],)
         self._computeTransforms()
 
+    def setTestFrac(self, value):
+        if value < 0.0 or value > 1.0:
+            raise ValueError("The test fraction is a number between 0 and 1.")
+        self.testFrac = value
+        self.nTest = int(self.testFrac*self.nTotal)
+        self.nTrain = self.nTotal - self.nTest
+        self.selectTrainTest()
+
     def _computeTransforms(self):
         self.XmeanTrain = np.mean(self.X[self.trainIndexes], axis=0)
         self.XstdTrain = np.std(self.X[self.trainIndexes], axis=0)
@@ -1163,7 +1171,10 @@ class Training(object):
         if self.trainingSet.polyOrder > 1:
             X = sgsvm.phiPol(X, self.trainingSet.polyOrder)
         X = self.trainingSet.applyPreTestTransform(X)
-        Z = self.clf.predict_proba(X)[:,1]
+        try:
+            Z = self.clf.predict_proba(X)[:,1]
+        except AttributeError:
+            Z = self.clf.predict(X).astype('float')
         zz = Z.reshape(xx.shape)
         fig = plt.figure(dpi=120)
         plt.pcolor(xx, yy, zz)
@@ -1201,7 +1212,7 @@ class BoxClf(object):
        return np.logical_and(X[:,0] < self._xBdy, X[:, 1] < self._yBdy)
 
     def plotBox(self, trainSet=None, frac=0.01, xlim=(18.0, 26.0), ylim=(-0.4, 1.0)):
-        fig = plt.figure()
+        fig = plt.figure(dpi=120)
         ax = fig.add_subplot(1, 1, 1)
         if trainSet is not None:
             size = int(len(trainSet.X)*frac)
