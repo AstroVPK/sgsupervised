@@ -580,25 +580,25 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
         decs = np.zeros((nRecords, len(bands)))
         X = np.zeros((nRecords, len(inputs)*len(bands)))
         Y = np.zeros((nRecords,), dtype=bool)
-        mags = np.zeros((nRecords,))
-        exts = np.zeros((nRecords,))
-        snrs = np.zeros((nRecords,))
-        seeings = np.zeros((nRecords,))
+        mags = np.zeros((nRecords, len(bands)))
+        exts = np.zeros((nRecords, len(bands)))
+        snrs = np.zeros((nRecords, len(bands)))
+        seeings = np.zeros((nRecords, len(bands)))
         if withErr:
             XErr = np.zeros((nRecords, len(inputs)*len(bands)))
         for i, band in enumerate(bands):
             ids[:, i] = getInput(cat, inputName='id', band=band)
             ras[:, i] = getInput(cat, inputName='ra', band=band)
             decs[:, i] = getInput(cat, inputName='dec', band=band)
+            mags[:, i] = getInput(cat, inputName=magsType, band=band)
+            exts[:, i] = getInput(cat, inputName=extsType, band=band)
+            snrs[:, i] = getInput(cat, inputName=snrType, band=band)
+            seeings[:, i] = getInput(cat, inputName='seeing', band=band)
             for j, inputName in enumerate(inputs):
                 X[:, i*nInputs + j] = getInput(cat, inputName=inputName, band=band)
                 if withErr:
                     XErr[:, i*nInputs + j] = getInputErr(cat, inputName=inputName, band=band)
         Y = getOutput(cat, outputName=output)
-        mags = getInput(cat, inputName=magsType, band='i')
-        exts = getInput(cat, inputName=extsType, band='i')
-        snrs = getInput(cat, inputName=snrType, band='i')
-        seeings = getInput(cat, inputName='seeing', band='i')
     if concatBands:
         good = np.ones((nRecords*len(bands),), dtype=bool)
     else:
