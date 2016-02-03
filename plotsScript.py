@@ -311,6 +311,21 @@ def _getPColors(g, r, i):
     riProj = gris[:,1] - gris[:,2]
     return P1, P2, grProj, riProj
 
+def getParallax(gHsc, rHsc, iHsc, zHsc):
+    grHsc = gHsc - rHsc
+    riHsc = rHsc - iHsc
+    izHsc = iHsc - zHsc
+    grSdss, riSdss, izSdss = _fromHscToSdss(grHsc, riHsc, izHsc)
+    gSdss = gHsc - cgr[0] - cgr[1]*grSdss - cgr[2]*grSdss**2
+    rSdss = rHsc - cri[0] - cri[1]*riSdss - cri[2]*riSdss**2
+    iSdss = iHsc - ciz[0] - ciz[1]*izSdss - ciz[2]*izSdss**2
+    zSdss = zHsc - czi[0] + czi[1]*izSdss - czi[2]*izSdss**2
+    P1, P2, grProj, riProj = _getPColors(gSdss, rSdss, iSdss)
+    magRAbsSdss = _getAbsoluteMagR(riProj)
+    magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riProj + cri[2]*riProj**2
+    dKpc = np.power(10.0, (rHsc-magRAbsHsc)/5)/100
+    return magRAbsHsc, dKpc
+
 def plotPostMarginals(trainClfs=False):
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     with open('trainSet.pkl', 'rb') as f:
@@ -371,7 +386,79 @@ def plotPostMarginals(trainClfs=False):
         fileFig = os.path.join(dirHome, 'Desktop/xdFitVsData{0}-{1}.png'.format(*magBins[j]))
         fig.savefig(fileFig, dpi=120, bbox_inches='tight')
 
-def highPostStarsShape(trainClfs=False):
+def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, title='Pure Morphology Classifier'):
+    fig = plt.figure(figsize=(10, 12), dpi=120)
+    axExt = fig.add_subplot(3, 2, 1)
+    axExt.scatter(dKpc, exts, marker='.', s=1)
+    axExt.set_xlim((0.0, 50.0))
+    axExt.set_ylim((-0.01, 0.1))
+    axExt.set_xlabel('d (kpc)')
+    axExt.set_ylabel('Mag_psf-Mag_cmodel')
+    axMagAbs = fig.add_subplot(3, 2, 2)
+    axMagAbs.scatter(dKpc, magRAbsHsc, marker='.', s=1)
+    axMagAbs.set_xlim((0.0, 50.0))
+    axMagAbs.set_ylim((4.0, 16.0))
+    axMagAbs.set_xlabel('d (kpc)')
+    axMagAbs.set_ylabel('Absolute Magnitude HSC-R')
+    axCol = fig.add_subplot(3, 2, 3)
+    axCol.scatter(dKpc, X[:,1], marker='.', s=1)
+    axCol.set_xlim((0.0, 50.0))
+    axCol.set_ylim((-0.2, 2.0))
+    axCol.set_xlabel('d (kpc)')
+    axCol.set_ylabel('r-i')
+    axMag = fig.add_subplot(3, 2, 4)
+    axMag.scatter(dKpc, magRHsc, marker='.', s=1)
+    axMag.set_xlim((0.0, 50.0))
+    axMag.set_xlabel('d (kpc)')
+    axMag.set_ylabel('Apparent Magnitude HSC-R')
+    axGr = fig.add_subplot(3, 2, 5)
+    if withProb:
+        sc = axGr.scatter(X[:,0], X[:,1], c=YProbGri, marker='.', s=2, edgecolors="none")
+        cb = fig.colorbar(sc, ax=axGr)
+    else:
+        sc = axGr.scatter(X[:,0], X[:,1], marker='.', s=2)
+    axGr.set_xlabel('g-r')
+    axGr.set_ylabel('r-i')
+    axGr.set_xlim((-0.5, 2.5))
+    axGr.set_ylim((-0.2, 2.0))
+    axRi = fig.add_subplot(3, 2, 6)
+    if withProb:
+        sc = axRi.scatter(X[:,1], X[:,2], c=YProbRiz,  marker='.', s=2, edgecolors="none")
+        cb = fig.colorbar(sc, ax=axRi)
+    else:
+        sc = axRi.scatter(X[:,1], X[:,2], marker='.', s=2)
+    axRi.set_xlabel('r-i')
+    axRi.set_ylabel('i-z')
+    axRi.set_xlim((-0.2, 2.0))
+    axRi.set_ylim((-0.2, 1.0))
+    fig.suptitle(title)
+    return fig
+
+def boxStarsTom():
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    clf = etl.BoxClf()
+    clf._setX(24.0); clf._setY(0.02)
+    idxBest = np.argmax(trainSet.snrs, axis=1)
+    idxArr = np.arange(len(trainSet.snrs))
+    mags = trainSet.mags[idxArr, idxBest]
+    exts = trainSet.exts[idxArr, idxBest]
+    Xbox = np.vstack((mags, exts)).T
+    Ybox = clf.predict(Xbox)
+    X = trainSet.X[Ybox]
+    mags = trainSet.mags[Ybox]
+    exts = exts[Ybox]
+    magRAbsHsc, dKpc = getParallax(mags[:,0], mags[:,1], mags[:,2], mags[:,3])
+    if True:
+        choice = np.random.choice(len(X), size=int(0.1*len(X)), replace=False)
+        dKpc = dKpc[choice]; exts = exts[choice]; magRAbsHsc = magRAbsHsc[choice]; X = X[choice]; mags = mags[choice]
+    fig = makeTomPlots(dKpc, exts, magRAbsHsc, X, mags[:,1])
+    dirHome = os.path.expanduser('~')
+    fileFig = os.path.join(dirHome, 'Desktop/boxStars.png')
+    fig.savefig(fileFig, dpi=120, bbox_inches='tight')
+    return fig
+
+def highPostStarsShape(trainClfs=False, withBox=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     fontSize = 18
