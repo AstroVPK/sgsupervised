@@ -386,7 +386,11 @@ def plotPostMarginals(trainClfs=False):
         fileFig = os.path.join(dirHome, 'Desktop/xdFitVsData{0}-{1}.png'.format(*magBins[j]))
         fig.savefig(fileFig, dpi=120, bbox_inches='tight')
 
-def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, title='Pure Morphology Classifier'):
+def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=None, YProbRiz=None,
+                 title='Pure Morphology Classifier'):
+    if withProb:
+        assert YProbGri is not None
+        assert YProbRiz is not None
     fig = plt.figure(figsize=(10, 12), dpi=120)
     axExt = fig.add_subplot(3, 2, 1)
     axExt.scatter(dKpc, exts, marker='.', s=1)
@@ -458,7 +462,7 @@ def boxStarsTom():
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
-def colExtStarsTom(trainClfs=True):
+def colExtStarsTom(trainClfs=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(24.0, 25.0), (25.0, 26.0)]
@@ -492,7 +496,42 @@ def colExtStarsTom(trainClfs=True):
     else:
         with open('clfsColsExt.pkl', 'rb') as f:
             clfs = pickle.load(f)
-    return clfs
+    XSub, XErrSub, Y = trainSet.getTestSet(standardized=False)
+    testIdxs = trainSet.testIndexes
+    mags = mags[testIdxs]
+    X = np.concatenate((XSub, exts[testIdxs][:, None]), axis=1)
+    covShapeSub = XErrSub.shape
+    dimSub = covShapeSub[1]
+    assert dimSub == covShapeSub[2]
+    covShape = (covShapeSub[0], dimSub+1, dimSub+1)
+    XErr = np.zeros(covShape)
+    xxSub, yySub = np.meshgrid(np.arange(dimSub), np.arange(dimSub), indexing='ij')
+    XErr[:, xxSub, yySub] = XErrSub
+    XErr[:, dimSub, dimSub] = extsErr[testIdxs]
+    YProb = np.zeros(Y.shape)
+    YProbGri = np.zeros(Y.shape)
+    YProbRiz = np.zeros(Y.shape)
+    for i, magBin in enumerate(magBins):
+        clfMarginalGri = clfs[i].getMarginalClf(cols=[0, 1])
+        clfMarginalRiz = clfs[i].getMarginalClf(cols=[1, 2])
+        magCut = np.logical_and(magBin[0] < mags, mags < magBin[1])
+        YProb[magCut] = clfs[i].predict_proba(X[magCut], XErr[magCut])
+        rowsV, colsV = np.meshgrid([0, 1], [0, 1], indexing='ij')
+        YProbGri[magCut] = clfMarginalGri.predict_proba(X[magCut][:, [0, 1]], XErr[magCut][:, rowsV, colsV])
+        rowsV, colsV = np.meshgrid([1, 2], [1, 2], indexing='ij')
+        YProbRiz[magCut] = clfMarginalRiz.predict_proba(X[magCut][:, [1, 2]], XErr[magCut][:, rowsV, colsV])
+    good = np.logical_and(YProb > 0.9, mags < 26.0)
+    mags = trainSet.getTestMags()
+    magRAbsHsc, dKpc = getParallax(mags[good,0], mags[good,1], mags[good,2], mags[good,3])
+    exts = exts[testIdxs][good]
+    mags = mags[good]
+    X = X[good]
+    fig = makeTomPlots(dKpc, exts, magRAbsHsc, X, mags[:,1], withProb=True,
+                       YProbGri=YProbGri, YProbRiz=YProbRiz, title='Morphology+Colors')
+    dirHome = os.path.expanduser('~')
+    fileFig = os.path.join(dirHome, 'Desktop/colExtStars.png')
+    fig.savefig(fileFig, dpi=120, bbox_inches='tight')
+    return fig
 
 def highPostStarsShape(trainClfs=False, withBox=False):
     with open('trainSet.pkl', 'rb') as f:
@@ -881,5 +920,6 @@ if __name__ == '__main__':
     #magExtPlots()
     #extCutRoc()
     #highPostStarsShape(trainClfs=False)
-    colExtStarsTom(trainClfs=True)
+    colExtStarsTom()
+    plt.show()
     #hstVsHscSize()
