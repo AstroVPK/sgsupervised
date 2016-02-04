@@ -549,7 +549,8 @@ def colExtStarsTom(trainClfs=False):
     mags = mags[good]
     X = X[good]
     fig = makeTomPlots(dKpc, exts, magRAbsHsc, X, mags[:,1], withProb=True,
-                       YProbGri=YProbGri, YProbRiz=YProbRiz, title='Morphology+Colors')
+                       YProbGri=YProbGri[good], YProbRiz=YProbRiz[good],
+                       title='Morphology+Colors')
     dirHome = os.path.expanduser('~')
     fileFig = os.path.join(dirHome, 'Desktop/colExtStars.png')
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
