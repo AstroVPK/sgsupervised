@@ -311,7 +311,7 @@ def _getPColors(g, r, i):
     riProj = gris[:,1] - gris[:,2]
     return P1, P2, grProj, riProj
 
-def getParallax(gHsc, rHsc, iHsc, zHsc):
+def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
     grHsc = gHsc - rHsc
     riHsc = rHsc - iHsc
     izHsc = iHsc - zHsc
@@ -320,9 +320,14 @@ def getParallax(gHsc, rHsc, iHsc, zHsc):
     rSdss = rHsc - cri[0] - cri[1]*riSdss - cri[2]*riSdss**2
     iSdss = iHsc - ciz[0] - ciz[1]*izSdss - ciz[2]*izSdss**2
     zSdss = zHsc - czi[0] + czi[1]*izSdss - czi[2]*izSdss**2
-    P1, P2, grProj, riProj = _getPColors(gSdss, rSdss, iSdss)
-    magRAbsSdss = _getAbsoluteMagR(riProj)
-    magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riProj + cri[2]*riProj**2
+    if projected:
+        P1, P2, grProj, riProj = _getPColors(gSdss, rSdss, iSdss)
+        magRAbsSdss = _getAbsoluteMagR(riProj)
+        magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riProj + cri[2]*riProj**2
+    else:
+        riSdss = rSdss - iSdss
+        magRAbsSdss = _getAbsoluteMagR(riSdss)
+        magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
     dKpc = np.power(10.0, (rHsc-magRAbsHsc)/5)/100
     return magRAbsHsc, dKpc
 
@@ -436,6 +441,23 @@ def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=No
     axRi.set_xlim((-0.2, 2.0))
     axRi.set_ylim((-0.2, 1.0))
     fig.suptitle(title)
+    return fig
+
+def truthStarsTom(frac=None):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    X, XErr, Y = trainSet.getTestSet(standardized=False)
+    mags = trainSet.getTestMags()
+    exts = trainSet.getTestExts()
+    X = X[Y]; mags = mags[Y]; exts = exts[Y]
+    magRAbsHsc, dKpc = getParallax(mags[:,0], mags[:,1], mags[:,2], mags[:,3])
+    if frac is not None:
+        choice = np.random.choice(len(X), size=int(frac*len(X)), replace=False)
+        dKpc = dKpc[choice]; exts = exts[choice]; magRAbsHsc = magRAbsHsc[choice]; X = X[choice]; mags = mags[choice]
+    fig = makeTomPlots(dKpc, exts[:,1], magRAbsHsc, X, mags[:,1], title='True Stars')
+    dirHome = os.path.expanduser('~')
+    fileFig = os.path.join(dirHome, 'Desktop/truthStars.png')
+    fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
 def boxStarsTom():
@@ -921,5 +943,5 @@ if __name__ == '__main__':
     #extCutRoc()
     #highPostStarsShape(trainClfs=False)
     colExtStarsTom()
-    plt.show()
+    #plt.show()
     #hstVsHscSize()
