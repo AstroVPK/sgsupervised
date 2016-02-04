@@ -458,6 +458,42 @@ def boxStarsTom():
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
+def colExtStarsTom(trainClfs=True):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    magBins = [(24.0, 25.0), (25.0, 26.0)]
+    idxBest = np.argmax(trainSet.snrs, axis=1)
+    idxArr = np.arange(len(trainSet.snrs))
+    mags = trainSet.mags[idxArr, idxBest]
+    exts = trainSet.exts[idxArr, idxBest]
+    extsErr = 1.0/trainSet.snrs[idxArr, idxBest]
+    if trainClfs:
+        gaussians = [(10, 10), (10, 10)]
+        XSub, XErrSub, Y = trainSet.getTrainSet(standardized=False)
+        trainIdxs = trainSet.trainIndexes
+        X = np.concatenate((XSub, exts[trainIdxs][:, None]), axis=1)
+        covShapeSub = XErrSub.shape
+        dimSub = covShapeSub[1]
+        assert dimSub == covShapeSub[2]
+        covShape = (covShapeSub[0], dimSub+1, dimSub+1)
+        XErr = np.zeros(covShape)
+        xxSub, yySub = np.meshgrid(np.arange(dimSub), np.arange(dimSub), indexing='ij')
+        XErr[:, xxSub, yySub] = XErrSub
+        XErr[:, dimSub, dimSub] = extsErr[trainIdxs]
+        mags = mags[trainIdxs]
+        for i, magBin in enumerate(magBins):
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsColsExt.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsColsExt.pkl', 'rb') as f:
+            clfs = pickle.load(f)
+    return clfs
+
 def highPostStarsShape(trainClfs=False, withBox=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -844,5 +880,6 @@ if __name__ == '__main__':
     #        xlabel='mag_cmodel (HSC-I deep)')
     #magExtPlots()
     #extCutRoc()
-    highPostStarsShape(trainClfs=False)
+    #highPostStarsShape(trainClfs=False)
+    colExtStarsTom(trainClfs=True)
     #hstVsHscSize()
