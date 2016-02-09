@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from sklearn.svm import LinearSVC
+from astroML.plotting.tools import draw_ellipse
 
 import supervisedEtl as etl
 import dGauss
@@ -928,6 +929,82 @@ def hstVsHscSize(snrCut=(10, 30)):
     fig.savefig('/u/garmilla/Desktop/hstVsHscSizeSnr{0}-{1}.png'.format(snrCut[0], snrCut[1]), bbox_inches='tight')
 
     plt.show()
+
+def peterPlot(trainClfs=False):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    idxBest = np.argmax(trainSet.snrs, axis=1)
+    idxArr = np.arange(len(trainSet.snrs))
+    mags = trainSet.mags[idxArr, idxBest]
+    exts = trainSet.exts[idxArr, idxBest]
+    extsErr = 1.0/trainSet.snrs[idxArr, idxBest]
+    if trainClfs:
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
+        XSub, XErrSub, Y = trainSet.getTrainSet(standardized=False)
+        trainIdxs = trainSet.trainIndexes
+        X = np.concatenate((XSub, exts[trainIdxs][:, None]), axis=1)
+        covShapeSub = XErrSub.shape
+        dimSub = covShapeSub[1]
+        assert dimSub == covShapeSub[2]
+        covShape = (covShapeSub[0], dimSub+1, dimSub+1)
+        XErr = np.zeros(covShape)
+        xxSub, yySub = np.meshgrid(np.arange(dimSub), np.arange(dimSub), indexing='ij')
+        XErr[:, xxSub, yySub] = XErrSub
+        XErr[:, dimSub, dimSub] = extsErr[trainIdxs]
+        mags = mags[trainIdxs]
+        clfs = []
+        for i, magBin in enumerate(magBins):
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsColsExtPeter.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsColsExtPeter.pkl', 'rb') as f:
+            clfs = pickle.load(f)
+    XSub, XErrSub, Y = trainSet.getTestSet(standardized=False)
+    testIdxs = trainSet.testIndexes
+    mags = mags[testIdxs]
+    exts = exts[testIdxs]
+    X = np.concatenate((XSub, exts[:, None]), axis=1)
+    figScat = plt.figure(figsize=(16, 12), dpi=120)
+    figGauss = plt.figure(figsize=(16, 12), dpi=120)
+    subArray = ([1, 4],)
+    xxSub, yySub = np.meshgrid([1, 4], [1, 4], indexing='ij')
+    for i, magBin in enumerate(magBins):
+        clf = clfs[i]
+        clfStar = clf.clfStar; clfGal = clf.clfGal
+        axGauss = figGauss.add_subplot(2, 2, i+1)
+        for j in range(clfStar.n_components):
+            draw_ellipse(clfStar.mu[j][subArray], clfStar.V[j][xxSub, yySub],
+                         scales=[2], ax=axGauss, ec='k', fc='blue', alpha=clfStar.alpha[j])
+        for j in range(clfGal.n_components):
+            draw_ellipse(clfGal.mu[j][subArray], clfGal.V[j][xxSub, yySub],
+                         scales=[2], ax=axGauss, ec='k', fc='red', alpha=clfGal.alpha[j])
+        magCut = np.logical_and(mags > magBin[0], mags < magBin[1])
+        choice = np.random.choice(np.sum(magCut), size=2000, replace=False)
+        axScat = figScat.add_subplot(2, 2, i+1)
+        for j in choice:
+            if Y[magCut][j]:
+                axScat.scatter(X[:, 1][magCut][j], exts[magCut][j], marker='.', s=1, color='blue')
+            else:
+                axScat.scatter(X[:, 1][magCut][j], exts[magCut][j], marker='.', s=1, color='red')
+        axGauss.set_xlabel('r-i')
+        axGauss.set_ylabel('Mag_psf-Mag_cmodel')
+        axGauss.set_xlim((-0.5, 3.0))
+        axGauss.set_ylim((-0.05, 1.0))
+        axGauss.set_title('{0} < Mag_cmodel_i < {1}'.format(*magBin))
+        axScat.set_xlabel('r-i')
+        axScat.set_ylabel('Mag_psf-Mag_cmodel')
+        axScat.set_xlim((-0.5, 3.0))
+        axScat.set_ylim((-0.05, 1.0))
+        axScat.set_title('{0} < Mag_cmodel_i < {1}'.format(*magBin))
+    figScat.savefig('/u/garmilla/Desktop/colVsExtScatter.png', bbox_inches='tight')
+    figGauss.savefig('/u/garmilla/Desktop/colVsExtGaussians.png', bbox_inches='tight')
+    return figScat, figGauss
 
 if __name__ == '__main__':
     #cutsPlots()
