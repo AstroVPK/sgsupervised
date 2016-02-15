@@ -342,6 +342,8 @@ def plotPostMarginals(trainClfs=False):
         gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
         X, XErr, Y = trainSet.getTrainSet(standardized=False)
         mags = trainSet.getTrainMags()
+        if mags.shape[1] > 1:
+            mags = mags[:, 2]
         for i, magBin in enumerate(magBins):
             good = np.logical_and(magBin[0] < mags, mags < magBin[1])
             ngStar, ngGal = gaussians[i]
@@ -355,6 +357,8 @@ def plotPostMarginals(trainClfs=False):
             clfs = pickle.load(f)
     X, XErr, Y = trainSet.getTestSet(standardized=False)
     mags = trainSet.getTestMags()
+    if mags.shape[1] > 1:
+        mags = mags[:, 2]
     colsList = [[0, 1], [1, 2], [2, 3]]
     cNames = ['g-r', 'r-i', 'i-z', 'z-y']
     colsLims = [[(-0.5, 2.5), (-0.5, 3.5)], [(-0.5, 3.5), (-0.5, 1.5)], [(-0.5, 1.5), (-0.5, 1.0)]]
@@ -375,14 +379,12 @@ def plotPostMarginals(trainClfs=False):
             cb = plt.colorbar(im)
             axCmap.set_xlabel(cNames[i])
             axCmap.set_ylabel(cNames[i+1])
-
             axScat = fig.add_subplot(2, 3, i+4)
             for k in range(len(X[good])):
                 if Y[good][k]:
                     axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='blue')
                 else:
-                    pass
-                    #axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='red')
+                    axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='red')
             axScat.set_xlim(colsLims[i][0])
             axScat.set_ylim(colsLims[i][1])
             axScat.set_xlabel(cNames[i])
