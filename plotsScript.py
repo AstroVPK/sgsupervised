@@ -3,7 +3,9 @@ import pickle
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 from sklearn.svm import LinearSVC
+from sklearn.neighbors.kde import KernelDensity
 from astroML.plotting.tools import draw_ellipse
 
 import supervisedEtl as etl
@@ -311,6 +313,56 @@ def _getPColors(g, r, i):
     grProj = gris[:,0] - gris[:,1]
     riProj = gris[:,1] - gris[:,2]
     return P1, P2, grProj, riProj
+
+def _getMsGrSdss(ri):
+    return 1.39*(1.0 - np.exp(-4.9*ri**3 - 2.45*ri**2 -1.68*ri - 0.050))
+
+def _getMsGrHsc(ri, A, B, C, D, E):
+    return A*(1.0 - np.exp(B*ri**3 + C*ri**2 + D*ri + E))
+
+def _fitGriSlHsc(gr, ri, sigma=None):
+    popt, pcov = curve_fit(_getMsGrHsc, ri, gr, p0=(1.39, -4.9, -2.45, -1.68, -0.050), sigma=sigma)
+    return popt, pcov
+
+def _makeIsoDensityPlot(gr, ri, withHsc=False, paramTuple=None, minDens=None, sigma=None):
+    values = np.vstack([gr, ri]).T
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(values)
+    xx, yy = np.meshgrid(np.linspace(-0.05, 1.7, num=100), np.linspace(-0.05, 1.7, num=100))
+    positions = np.vstack([xx.ravel(), yy.ravel()]).T
+    zz = np.reshape(np.exp(kde.score_samples(positions)), xx.shape)
+
+    riSl = np.linspace(-0.05, 1.7, num=100)
+    if withHsc:
+        if paramTuple is None:
+            assert minDens is not None
+            densValues = np.exp(kde.score_samples(values))
+            good = np.logical_and(True, densValues > minDens)
+            popt, pcov = _fitGriSlHsc(gr[good], ri[good], sigma=sigma[good])
+            print popt
+            paramTuple = popt
+        grSl = _getMsGrHsc(riSl, *paramTuple)
+    else:
+        grSl = _getMsGrSdss(riSl)
+
+    fig = plt.figure(figsize=(16, 6), dpi=120)
+    axData = fig.add_subplot(1, 2, 1)
+    axData.scatter(gr[good], ri[good], marker='.', s=1, color='blue')
+    axData.scatter(gr[np.logical_not(good)], ri[np.logical_not(good)], marker='.', s=1, color='red')
+    axData.set_xlim((-0.05, 1.7))
+    axData.set_ylim((-0.05, 1.7))
+    axData.set_xlabel('g-r')
+    axData.set_ylabel('r-i')
+    axData.plot(grSl, riSl, color='black')
+    axContour = fig.add_subplot(1, 2, 2)
+    print "Maximum contour value is {0}".format(zz.max())
+    ctr = axContour.contour(xx, yy, zz, levels=[0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6])
+    #plt.colorbar(ctr)
+    axContour.set_xlim((-0.05, 1.7))
+    axContour.set_ylim((-0.05, 1.7))
+    axContour.plot(grSl, riSl, color='black')
+    axContour.set_xlabel('g-r')
+    axContour.set_ylabel('r-i')
+    return fig
 
 def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
     grHsc = gHsc - rHsc
