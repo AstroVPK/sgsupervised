@@ -320,48 +320,115 @@ def _getMsGrSdss(ri):
 def _getMsGrHsc(ri, A, B, C, D, E):
     return A*(1.0 - np.exp(B*ri**3 + C*ri**2 + D*ri + E))
 
+def _getMsIzHsc(ri, A, B, C, D):
+    return A + B*ri + C*ri**2 + D*ri**3
+
 def _fitGriSlHsc(gr, ri, sigma=None):
     popt, pcov = curve_fit(_getMsGrHsc, ri, gr, p0=(1.39, -4.9, -2.45, -1.68, -0.050), sigma=sigma)
     return popt, pcov
 
-def _makeIsoDensityPlot(gr, ri, withHsc=False, paramTuple=None, minDens=None, sigma=None):
-    values = np.vstack([gr, ri]).T
-    kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(values)
-    xx, yy = np.meshgrid(np.linspace(-0.05, 1.7, num=100), np.linspace(-0.05, 1.7, num=100))
+def _fitRizSlHsc(ri, iz, sigma=None):
+    popt, pcov = curve_fit(_getMsIzHsc, ri, iz, p0=(0.0, 0.5, 0.0, 0.0), sigma=sigma)
+    return popt, pcov
+
+def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, minDens=None, sigma=None):
+    if gr is None and iz is None or\
+       gr is not None and iz is not None:
+        raise ValueError("You need to provide one, and only one, of these two colors: g-r, and i-z.")
+    if iz is None:
+        values = np.vstack([gr, ri]).T
+        kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(values)
+        xx, yy = np.meshgrid(np.linspace(-0.05, 1.7, num=100), np.linspace(-0.05, 2.5, num=100))
+    else:
+        values = np.vstack([ri, iz]).T
+        kde = KernelDensity(kernel='gaussian', bandwidth=0.05).fit(values)
+        xx, yy = np.meshgrid(np.linspace(-0.05, 2.5, num=100), np.linspace(-0.05, 1.2, num=100))
     positions = np.vstack([xx.ravel(), yy.ravel()]).T
     zz = np.reshape(np.exp(kde.score_samples(positions)), xx.shape)
 
-    riSl = np.linspace(-0.05, 1.7, num=100)
+    riSl = np.linspace(-0.05, 2.5, num=100)
     if withHsc:
         if paramTuple is None:
             assert minDens is not None
             densValues = np.exp(kde.score_samples(values))
             good = np.logical_and(True, densValues > minDens)
-            popt, pcov = _fitGriSlHsc(gr[good], ri[good], sigma=sigma[good])
+            if sigma is not None:
+                sigma = sigma[good]
+            if iz is None:
+                popt, pcov = _fitGriSlHsc(gr[good], ri[good], sigma=sigma)
+            else:
+                popt, pcov = _fitRizSlHsc(ri[good], iz[good], sigma=sigma)
             print popt
             paramTuple = popt
-        grSl = _getMsGrHsc(riSl, *paramTuple)
+        if iz is None:
+            grSl = _getMsGrHsc(riSl, *paramTuple)
+        else:
+            izSl = _getMsIzHsc(riSl, *paramTuple)
     else:
-        grSl = _getMsGrSdss(riSl)
+        if iz is None:
+            grSl = _getMsGrSdss(riSl)
+        else:
+            raise ValueError("I don't have a riz fir for SDSS stars. Fit to HSC stars instead.")
 
     fig = plt.figure(figsize=(16, 6), dpi=120)
     axData = fig.add_subplot(1, 2, 1)
-    axData.scatter(gr[good], ri[good], marker='.', s=1, color='blue')
-    axData.scatter(gr[np.logical_not(good)], ri[np.logical_not(good)], marker='.', s=1, color='red')
-    axData.set_xlim((-0.05, 1.7))
-    axData.set_ylim((-0.05, 1.7))
-    axData.set_xlabel('g-r')
-    axData.set_ylabel('r-i')
-    axData.plot(grSl, riSl, color='black')
+    if iz is None:
+        axData.scatter(gr[good], ri[good], marker='.', s=1, color='blue')
+        axData.scatter(gr[np.logical_not(good)], ri[np.logical_not(good)], marker='.', s=1, color='red')
+        axData.set_xlim((-0.05, 1.7))
+        axData.set_ylim((-0.05, 2.5))
+        axData.set_xlabel('g-r')
+        axData.set_ylabel('r-i')
+        axData.plot(grSl, riSl, color='black')
+    else:
+        axData.scatter(ri[good], iz[good], marker='.', s=1, color='blue')
+        axData.scatter(ri[np.logical_not(good)], iz[np.logical_not(good)], marker='.', s=1, color='red')
+        axData.set_xlim((-0.05, 2.5))
+        axData.set_ylim((-0.05, 1.2))
+        axData.set_xlabel('r-i')
+        axData.set_ylabel('i-z')
+        axData.plot(riSl, izSl, color='black')
     axContour = fig.add_subplot(1, 2, 2)
     print "Maximum contour value is {0}".format(zz.max())
-    ctr = axContour.contour(xx, yy, zz, levels=[0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6])
+    if iz is None:
+        ctr = axContour.contour(xx, yy, zz, levels=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6])
+    else:
+        ctr = axContour.contour(xx, yy, zz, levels=[0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.10, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2])
     #plt.colorbar(ctr)
-    axContour.set_xlim((-0.05, 1.7))
-    axContour.set_ylim((-0.05, 1.7))
-    axContour.plot(grSl, riSl, color='black')
-    axContour.set_xlabel('g-r')
-    axContour.set_ylabel('r-i')
+    if iz is None:
+        axContour.set_xlim((-0.05, 1.7))
+        axContour.set_ylim((-0.05, 2.5))
+        axContour.plot(grSl, riSl, color='black')
+        axContour.set_xlabel('g-r')
+        axContour.set_ylabel('r-i')
+    else:
+        axContour.set_xlim((-0.05, 2.5))
+        axContour.set_ylim((-0.05, 1.2))
+        axContour.plot(riSl, izSl, color='black')
+        axContour.set_xlabel('r-i')
+        axContour.set_ylabel('i-z')
+    return fig
+
+def makePhotParallaxPlot():
+    paramsGri = (1.30038049, -7.78059699, -0.71791215, -0.76761088, -0.19133522)
+    paramsRiz = (-0.01068287, 0.59929634,-0.19457149, 0.05357661)
+    riSl = np.linspace(-0.05, 2.5, num=100)
+    grSl = _getMsGrHsc(riSl, *paramsGri)
+    izSl = _getMsIzHsc(riSl, *paramsRiz)
+    grSdss, riSdss, izSdss = _fromHscToSdss(grSl, riSl, izSl, giveClosest=True)
+    absMagRSdss = _getAbsoluteMagR(riSdss)
+    absMagRHsc = absMagRSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
+    absMagGHsc = absMagRHsc + grSl
+
+    fig = plt.figure(figsize=(16, 6), dpi=120)
+    axGr = fig.add_subplot(1, 2, 1)
+    axRi = fig.add_subplot(1, 2, 2)
+    axGr.plot(grSl, absMagGHsc, color='black')
+    axRi.plot(riSl, absMagRHsc, color='black')
+    axGr.set_xlabel('g-r')
+    axRi.set_xlabel('r-i')
+    axGr.set_ylabel('Absolute Magnitude HSC-G')
+    axRi.set_ylabel('Absolute Magnitude HSC-R')
     return fig
 
 def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
@@ -542,14 +609,14 @@ def boxStarsTom():
 def colExtStarsTom(trainClfs=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
-    magBins = [(24.0, 25.0), (25.0, 26.0)]
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     idxBest = np.argmax(trainSet.snrs, axis=1)
     idxArr = np.arange(len(trainSet.snrs))
     mags = trainSet.mags[idxArr, idxBest]
     exts = trainSet.exts[idxArr, idxBest]
     extsErr = 1.0/trainSet.snrs[idxArr, idxBest]
     if trainClfs:
-        gaussians = [(10, 10), (10, 10)]
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
         XSub, XErrSub, Y = trainSet.getTrainSet(standardized=False)
         trainIdxs = trainSet.trainIndexes
         X = np.concatenate((XSub, exts[trainIdxs][:, None]), axis=1)
@@ -562,6 +629,7 @@ def colExtStarsTom(trainClfs=False):
         XErr[:, xxSub, yySub] = XErrSub
         XErr[:, dimSub, dimSub] = extsErr[trainIdxs]
         mags = mags[trainIdxs]
+        clfs = []
         for i, magBin in enumerate(magBins):
             good = np.logical_and(magBin[0] < mags, mags < magBin[1])
             ngStar, ngGal = gaussians[i]
