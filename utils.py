@@ -5,11 +5,11 @@ import lsst.afw.table as afwTable
 
 import sgSVM as sgsvm
 
-kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-0.8, 'galDiff':3.9},
-               'r': {'lOffsetStar':-2.9, 'starDiff':3.4, 'lOffsetGal':0.5, 'galDiff':2.3},
-               'i': {'lOffsetStar':0.2, 'starDiff':0.5, 'lOffsetGal':1.7, 'galDiff':1.5},
-               'z': {'lOffsetStar':1.0, 'starDiff':0.2, 'lOffsetGal':2.0, 'galDiff':1.4},
-               'y': {'lOffsetStar':1.4, 'starDiff':0.2, 'lOffsetGal':2.6, 'galDiff':1.1},
+kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-2.8, 'galDiff':4.9},
+               'r': {'lOffsetStar':-2.9, 'starDiff':3.4, 'lOffsetGal':-2.5, 'galDiff':4.8},
+               'i': {'lOffsetStar':-0.05, 'starDiff':0.58, 'lOffsetGal':-2.3, 'galDiff':4.5},
+               'z': {'lOffsetStar':1.0, 'starDiff':0.2, 'lOffsetGal':-1.0, 'galDiff':3.9},
+               'y': {'lOffsetStar':1.4, 'starDiff':0.2, 'lOffsetGal':-1.6, 'galDiff':4.6},
               }
 
 def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
@@ -25,8 +25,29 @@ def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, l
     goodStar = np.logical_or(noMeas, np.logical_and(good, np.logical_and(stellar, np.logical_and(mag < magAuto + starDiff, mag > magAuto - lOffsetStar - starDiff))))
     goodGal = np.logical_or(noMeas, np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff, mag > magAuto - lOffsetGal - galDiff))))
 
-    good = np.logical_or(goodStar, goodGal)
+    goodRet = np.logical_or(goodStar, goodGal)
 
+    return goodRet
+
+def getGoodStats(cat, bands=['g', 'r', 'i', 'z', 'y']):
+    hasPhotG = np.isfinite(cat.get('cmodel.flux.g'))
+    hasPhotR = np.isfinite(cat.get('cmodel.flux.r'))
+    hasPhotI = np.isfinite(cat.get('cmodel.flux.i'))
+    hasPhotZ = np.isfinite(cat.get('cmodel.flux.z'))
+    hasPhotY = np.isfinite(cat.get('cmodel.flux.y'))
+    hasPhotAny = np.logical_or(np.logical_or(np.logical_or(hasPhotG, hasPhotR), np.logical_or(hasPhotI, hasPhotZ)), hasPhotY)
+    print "I removed {0} objects that don't have photometry in any band".format(len(hasPhotAny) - np.sum(hasPhotAny))
+    good = hasPhotAny
+    for band in bands:
+        flux = cat.get('cmodel.flux.'+band)
+        fluxPsf = cat.get('flux.psf.'+band)
+        ext = -2.5*np.log10(fluxPsf/flux)
+        noExtExt = np.logical_and(good, ext < 5.0)
+        print "I removed {0} objects with extreme extendedness in {1}".format(np.sum(good)-np.sum(noExtExt), band)
+        good = noExtExt
+        noMatchOutlier = np.logical_and(good, dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band]))
+        print "I removed {0} match outliers in {1}".format(np.sum(good)-np.sum(noMatchOutlier), band)
+        good = noMatchOutlier
     return good
 
 def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True,
@@ -174,7 +195,7 @@ def makeExtExtPlot(cat, bands=['g', 'r', 'i', 'z', 'y'], fontSize=14, size=1,
     return fig
 
 def makeMatchMagPlot(cat, fontSize=18, lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8, band='i',
-                     xlim=(16.5, 29.0), ylim=(16.5, 29.0), maxExt=2.0, minExt=-0.4):
+                     xlim=(16.5, 30.0), ylim=(16.5, 31.0), maxExt=2.0, minExt=-0.4):
     """
     Make MAG_AUTO vs CModel plot to identify problematic matches. Default values are meant for HSC-I.
     """
