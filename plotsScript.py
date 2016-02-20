@@ -331,6 +331,40 @@ def _fitRizSlHsc(ri, iz, sigma=None):
     popt, pcov = curve_fit(_getMsIzHsc, ri, iz, p0=(0.0, 0.5, 0.0, 0.0), sigma=sigma)
     return popt, pcov
 
+def makeIsoDensityPlot(xData, yData, xRange, yRange, bandwidth=0.1, xlabel=None, ylabel=None,
+                       printMaxDens=False, levels=None):
+    values = np.vstack([xData, yData]).T
+    kde = KernelDensity(kernel='gaussian', bandwidth=bandwidth).fit(values)
+    xx, yy = np.meshgrid(np.linspace(*xRange, num=100), np.linspace(*yRange, num=100))
+    positions = np.vstack([xx.ravel(), yy.ravel()]).T
+    zz = np.reshape(np.exp(kde.score_samples(positions)), xx.shape)
+    if printMaxDens:
+        print "maxDens={0}".format(zz.max())
+
+    fig = plt.figure(figsize=(16, 6), dpi=120)
+    axData = fig.add_subplot(1, 2, 1)
+    axData.scatter(xData, yData, marker='.', s=1, color='black')
+    axData.set_xlim(xRange)
+    axData.set_ylim(yRange)
+    if xlabel is not None:
+        axData.set_xlabel(xlabel)
+    if ylabel is not None:
+        axData.set_ylabel(ylabel)
+    axContour = fig.add_subplot(1, 2, 2)
+    if levels is None:
+        ctr = axContour.contour(xx, yy, zz)
+    else:
+        ctr = axContour.contour(xx, yy, zz, levels=levels)
+    if printMaxDens:
+        plt.colorbar(ctr)
+    axContour.set_xlim(xRange)
+    axContour.set_ylim(yRange)
+    if xlabel is not None:
+        axContour.set_xlabel(xlabel)
+    if ylabel is not None:
+        axContour.set_ylabel(ylabel)
+    return fig
+
 def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, minDens=None, sigma=None):
     if gr is None and iz is None or\
        gr is not None and iz is not None:
