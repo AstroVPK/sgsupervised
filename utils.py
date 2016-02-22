@@ -421,6 +421,7 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         cat = afwTable.SourceCatalog.readFits(cat)
+    good = getGoodStats(cat)
     if trueSample:
         nSample = int(frac*len(cat))
         idxSample = np.random.choice(len(cat), nSample, replace=False)
@@ -450,9 +451,9 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
             if xType == 'mag':
                 mag = -2.5*np.log10(flux/fluxZero)
                 if overplot:
-                    ax.set_xlabel('CModel Magnitude All Bands', fontsize=fontSize)
+                    ax.set_xlabel(r'CModel Magnitude All Bands', fontsize=fontSize)
                 else:
-                    ax.set_xlabel('CModel Magnitude HSC-'+band.upper(), fontsize=fontSize)
+                    ax.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-'+band.upper(), fontsize=fontSize)
             elif xType == 'magSnr':
                 mag = flux/fluxErr
                 plt.xlabel('CModel S/N HSC-'+band.upper(), fontsize=fontSize)
@@ -471,11 +472,10 @@ def makeMagExPlot(cat, band, size=1, fontSize=18, withLabels=False, title=None,
             else:
                 raise ValueError("I don't recognize the xType value")
             ext = -2.5*np.log10(fluxPsf/flux)
-            good = getGood(cat, band, **kargGood)
             if data is None:
                 if type == 'ext':
                     data = ext
-                    plt.ylabel('Mag_psf - Mag_cmodel HSC-'+band.upper(), fontsize=fontSize)
+                    plt.ylabel(r'$\mathrm{Mag}_{psf} - \mathrm{Mag}_{cmodel}$ HSC-'+band.upper(), fontsize=fontSize)
                 elif type == 'kron':
                     data = -2.5*np.log10(cat.get('flux.psf.'+band)/cat.get('flux.kron.'+band))
                     plt.ylabel('Mag_psf - Mag_kron HSC-'+band.upper(), fontsize=fontSize)
@@ -667,7 +667,7 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             q, data = sgsvm.getShape(cat, band, 'dev')
         else:
             data = cat.get(type + '.' + band)
-    good = getGood(cat, band, noParent = noParent)
+    good = getGoodStats(cat)
     good = np.logical_and(good, np.isfinite(data))
     fig = plt.figure(figsize=(16, 16), dpi=120)
     for i in range(nRow*nColumn):
@@ -675,14 +675,15 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
         goodCut = np.logical_and(good, magI >= magCut[0])
         goodCut = np.logical_and(goodCut, magI <= magCut[1])
         ax = fig.add_subplot(nRow, nColumn, i+1)
-        ax.set_xlabel('Extendedness HSC-' + band.upper(), fontsize=fontSize)
+        ax.set_xlabel(r'$\mathrm{Mag}_{psf}-\mathrm{Mag}_{cmodel}$ HSC-' + band.upper(), fontsize=fontSize)
         if xlim is not None:
             ax.set_xlim(xlim)
         if normed:
             ax.set_ylabel('Probability Density', fontsize=fontSize)
         else:
             ax.set_ylabel('Object Counts', fontsize=fontSize)
-        ax.set_title('{0} < Magnitude HSC-I < {1}'.format(*magCut), fontsize=fontSize)
+        magName = r'$\mathrm{Mag}_{cmodel}$'
+        ax.set_title(r'{0} < {1} HSC-I < {2}'.format(magCut[0], magName, magCut[1]), fontsize=fontSize)
         hist, bins = np.histogram(data[goodCut], bins=nBins, range=xlim)
         if withLabels:
             # Make sure the same binning is being used to make meaningful comparisons
@@ -705,7 +706,7 @@ def makeExtHist(cat, band, magCuts=None, nBins=100, fontSize=14, withLabels=Fals
             ax.legend(loc=1, fontsize=fontSize)
         ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
 
-    fig.savefig('/u/garmilla/Desktop/extHistogramsLabeled.eps', dpi=120, bbox_inches='tight')
+    fig.savefig('/u/garmilla/Desktop/extHistogramsLabeled.png', dpi=120, bbox_inches='tight')
     return fig
 
 def testClfs(clfList, X, Y, cols=None, magCol=None, fig=None, colList=None, pltKargs=None, magIdx=2, printCoeffs=False):
@@ -753,6 +754,77 @@ def testClfs(clfList, X, Y, cols=None, magCol=None, fig=None, colList=None, pltK
             print "intercept=", intercept
             if len(coeffs) == 1:
                 print "Cut={0}".format(-intercept/coeffs[0])
+    return fig
+
+def makeColorColorPlot(cat, mode='riz', withResolvedGalaxies=True, xlim=None, ylim=None, size=1,
+                       magCuts=[(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)], fontSize=16,
+                       frac=0.1):
+    if mode == 'gri':
+        colX = -2.5*np.log10(cat.get('cmodel.flux.g')/cat.get('flux.zeromag.g'))\
+               -(-2.5*np.log10(cat.get('cmodel.flux.r')/cat.get('flux.zeromag.r')))
+        colY = -2.5*np.log10(cat.get('cmodel.flux.r')/cat.get('flux.zeromag.r'))\
+               -(-2.5*np.log10(cat.get('cmodel.flux.i')/cat.get('flux.zeromag.i')))
+        dName = 'GRI'
+        xlabel = 'g-r'
+        ylabel = 'r-i'
+    elif mode == 'riz':
+        colX = -2.5*np.log10(cat.get('cmodel.flux.r')/cat.get('flux.zeromag.r'))\
+               -(-2.5*np.log10(cat.get('cmodel.flux.i')/cat.get('flux.zeromag.i')))
+        colY = -2.5*np.log10(cat.get('cmodel.flux.i')/cat.get('flux.zeromag.i'))\
+               -(-2.5*np.log10(cat.get('cmodel.flux.z')/cat.get('flux.zeromag.z')))
+        dName = 'RIZ'
+        xlabel = 'r-i'
+        ylabel = 'i-z'
+    elif mode == 'izy':
+        colX = -2.5*np.log10(cat.get('cmodel.flux.i')/cat.get('flux.zeromag.i'))\
+               -(-2.5*np.log10(cat.get('cmodel.flux.z')/cat.get('flux.zeromag.z')))
+        colY = -2.5*np.log10(cat.get('cmodel.flux.z')/cat.get('flux.zeromag.z'))\
+               -(-2.5*np.log10(cat.get('cmodel.flux.y')/cat.get('flux.zeromag.y')))
+        dName = 'IZY'
+        xlabel = 'i-z'
+        ylabel = 'z-y'
+    else:
+        raise ValueError('Mode {0} is not implemented'.format(mode))
+    
+    good = getGoodStats(cat)
+   
+    try:
+        stellar = cat.get('stellar')
+    except KeyError:
+        stellar = cat.get('mu.class') == 2
+
+    if not withResolvedGalaxies:
+        extI = -2.5*np.log10(cat.get('flux.psf.i')/cat.get('cmodel.flux.i'))
+        unresolvedGal = np.logical_and(np.logical_not(stellar), extI < 0.02)
+        goodGal = np.logical_and(good, unresolvedGal)
+        goodStar = np.logical_and(good, stellar)
+        good = np.logical_or(goodStar, goodGal)
+
+    fig = plt.figure(figsize=(16, 16), dpi=120)
+    choice = np.random.choice(len(colX), size=int(frac*len(colX)), replace=False)
+    for i, cut in enumerate(magCuts):
+        ax = fig.add_subplot(2, 2, i+1)
+        magName = r'$\mathrm{Mag}_{cmodel}$'
+        ax.set_title(r'{0} < {1} HSC-I < {2}'.format(cut[0], magName, cut[1]), fontsize=fontSize)
+        ax.set_xlabel(xlabel, fontsize=fontSize)
+        ax.set_ylabel(ylabel, fontsize=fontSize)
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+        magI = -2.5*np.log10(cat.get('cmodel.flux.i')/cat.get('flux.zeromag.i'))
+        goodCut = np.logical_and(good, np.logical_and(magI > cut[0], magI < cut[1]))
+        for j in choice:
+            if goodCut[j]:
+                if stellar[j]:
+                    ax.plot(colX[j], colY[j], marker='.', markersize=size, color='blue')
+                else:
+                    ax.plot(colX[j], colY[j], marker='.', markersize=size, color='red')
+    fig.savefig('/u/garmilla/Desktop/cosmosMatch{0}.png'.format(dName), dpi=120, bbox_inches='tight')
     return fig
 
 def testLinearModels(bands=['g', 'r', 'i', 'z', 'y'], catType='hsc', inputFile='sgClassCosmosDeepCoaddSrcHsc-119320150325GRIZY.fits',
