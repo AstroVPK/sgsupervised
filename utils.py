@@ -1096,9 +1096,12 @@ def plotCMag(cat, fontSize=18):
     plt.gca().invert_yaxis()
     return fig
 
-def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, nBins=50,
-                  ontSize=16, xlabel='CModel Magnitude', ylabel='Scores', cutType='ext',
-                  linestyles=[':', '-', '--'], fontSize=18, deconvType='trace'):
+def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.02], magMin=19.0, magMax=26.0, nBins=50,
+                  ontSize=16, xlabel=r'$\mathrm{Mag}_{cmodel}$', ylabel='Scores', cutType='ext',
+                  linestyles=[':', '-', '--'], fontSize=18, deconvType='trace', frac=0.1,
+                  size=1):
+    xlabel += r' HSC-{0}'.format(band.upper())
+    good = getGoodStats(cat)
     magBins = np.linspace(magMin, magMax, num=nBins+1)
     magCenters = 0.5*(magBins[:-1] + magBins[1:])
     complStars = np.zeros(magCenters.shape)
@@ -1121,9 +1124,32 @@ def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, 
     except KeyError:
         stellar = cat.get('mu.class') == 2
     truth = stellar
-    fig = plt.figure(figsize=(16, 8))
-    axGal = fig.add_subplot(1, 2, 1)
-    axStar = fig.add_subplot(1, 2, 2)
+    figCuts = plt.figure(figsize=(8, 8), dpi=120)
+    axCuts = figCuts.add_subplot(1, 1, 1)
+    try:
+        stellar = cat.get('stellar')
+    except KeyError:
+        stellar = cat.get('mu.class') == 2
+    choice = np.random.choice(len(magMeas), size=int(frac*len(magMeas)), replace=False)
+    for i in choice:
+        if good[i]:
+            if stellar[i]:
+                axCuts.plot(magMeas[i], data[i], marker='.', markersize=size, color='blue')
+            else:
+                axCuts.plot(magMeas[i], data[i], marker='.', markersize=size, color='red')
+    for i in range(len(cuts)):
+        axCuts.plot([magMin, magMax], [cuts[i], cuts[i]], color='black', linestyle=linestyles[i], linewidth=2)
+    axCuts.set_xlim((magMin, magMax))
+    axCuts.set_ylim((-0.01, 0.1))
+    axCuts.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    axCuts.set_ylabel(r'$\mathrm{Mag}_{psf}-\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    for tick in axCuts.xaxis.get_major_ticks():
+        tick.label.set_fontsize(fontSize)
+    for tick in axCuts.yaxis.get_major_ticks():
+        tick.label.set_fontsize(fontSize)
+    figScores = plt.figure(figsize=(16, 8), dpi=120)
+    axGal = figScores.add_subplot(1, 2, 1)
+    axStar = figScores.add_subplot(1, 2, 2)
     axGal.set_title('Galaxies', fontsize=fontSize)
     axStar.set_title('Stars', fontsize=fontSize)
     axGal.set_xlabel(xlabel, fontsize=fontSize)
@@ -1141,7 +1167,7 @@ def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, 
         pred = np.logical_and(True, data < cut)
         linestyle = linestyles[i]
         for j in range(nBins):
-            magCut = np.logical_and(magMeas > magBins[j], magMeas < magBins[j+1])
+            magCut = np.logical_and(good, np.logical_and(magMeas > magBins[j], magMeas < magBins[j+1]))
             predCut = pred[magCut]; truthCut = truth[magCut]
             goodStars = np.logical_and(predCut, truthCut)
             goodGals = np.logical_and(np.logical_not(predCut), np.logical_not(truthCut))
@@ -1154,12 +1180,14 @@ def plotCutScores(cat, band, cuts=[0.001, 0.01, 0.1], magMin=19.0, magMax=26.0, 
             if len(predCut) - np.sum(predCut) > 0:
                 purityGals[j] = float(np.sum(goodGals))/(len(predCut) - np.sum(predCut))
 
-        axGal.step(magCenters, complGals, color='red', linestyle=linestyle, label='{0} {1} cut completeness'.format(cut, cutType))
-        axGal.step(magCenters, purityGals, color='blue', linestyle=linestyle, label='{0} {1} cut purity'.format(cut, cutType))
-        axStar.step(magCenters, complStars, color='red', linestyle=linestyle, label='{0} {1} cut completeness'.format(cut, cutType))
-        axStar.step(magCenters, purityStars, color='blue', linestyle=linestyle, label='{0} {1} cut purity'.format(cut, cutType))
+        dMagName = r'$\Delta\mathrm{Mag}$'
+        axGal.step(magCenters, complGals, color='red', linestyle=linestyle, label=r'{0} {1} cut completeness'.format(cut, dMagName))
+        axGal.step(magCenters, purityGals, color='blue', linestyle=linestyle, label=r'{0} {1} cut purity'.format(cut, dMagName))
+        axStar.step(magCenters, complStars, color='red', linestyle=linestyle, label=r'{0} {1} cut completeness'.format(cut, dMagName))
+        axStar.step(magCenters, purityStars, color='blue', linestyle=linestyle, label=r'{0} {1} cut purity'.format(cut, dMagName))
 
     axGal.legend(loc='lower left', fontsize=fontSize)
     axStar.legend(loc='lower left', fontsize=fontSize)
-    fig.savefig('/u/garmilla/Desktop/{0}CutScoresHSC-{1}.eps'.format(cutType, band.upper()), dpi=120, bbox_inches='tight')
-    return fig
+    figCuts.savefig('/u/garmilla/Desktop/{0}CutsHSC-{1}.png'.format(cutType, band.upper()), dpi=120, bbox_inches='tight')
+    figScores.savefig('/u/garmilla/Desktop/{0}CutScoresHSC-{1}.png'.format(cutType, band.upper()), dpi=120, bbox_inches='tight')
+    return figScores
