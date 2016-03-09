@@ -904,7 +904,7 @@ class Training(object):
                 purityGals[i] = float(np.sum(goodGals))/(len(predCut) - np.sum(predCut))
 
         if fig is None:
-            fig = plt.figure()
+            fig = plt.figure(figsize=(16, 6), dpi=120)
             axGal = fig.add_subplot(1, 2, 1)
             axStar = fig.add_subplot(1, 2, 2)
             axGal.set_title('Galaxies', fontsize=fontSize)
@@ -928,6 +928,9 @@ class Training(object):
         axGal.step(magsCenters, purityGals, color='blue', linestyle=linestyle, label=legendLabel + ' Purity')
         axStar.step(magsCenters, complStars, color='red', linestyle=linestyle, label=legendLabel + ' Completeness')
         axStar.step(magsCenters, purityStars, color='blue', linestyle=linestyle, label=legendLabel + ' Purity')
+
+        axGal.legend(loc='lower left', fontsize=fontSize-2)
+        axStar.legend(loc='lower left', fontsize=fontSize-2)
 
         return fig
 

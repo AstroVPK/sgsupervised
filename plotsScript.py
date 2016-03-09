@@ -1169,16 +1169,18 @@ def _getTrainWide(wideCat=1):
         catWide = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
     else:
         raise ValueError('I only have wide cats 1 and 2')
-    trainSetWide = etl.extractTrainSet(catWide, inputs=['ext', 'extHsmDeconvLinear'])
+    trainSetWide = etl.extractTrainSet(catWide, inputs=['mag', 'ext', 'extHsmDeconvLinear'])
     return trainSetWide
 
 def _getTrainDeep():
     catDeep = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
-    trainSetDeep = etl.extractTrainSet(catDeep, inputs=['ext', 'extHsmDeconvLinear'])
+    trainSetDeep = etl.extractTrainSet(catDeep, inputs=['mag', 'ext', 'extHsmDeconvLinear'])
     return trainSetDeep
 
 def _extMomentsCompHists(trainSetWide, trainSetDeep=None, wideCat=1, withDeepCat=True, fontSize=16,
-                         nBins=50, magCut=(24.0, 25.0), rangeExt=(-0.02, 0.3), rangeMom=(-0.2, 0.3)):
+                         nBins=50, magCut=(24.0, 25.0), rangeExt=(-0.02, 0.3), rangeMom=(-0.2, 0.3),
+                         cutsExt = [0.001, 0.01, 0.02], cutsMom = [0.0005, 0.005, 0.01],
+                         style = ['--', '-', ':']):
     if withDeepCat and trainSetDeep is None:
         raise ValueError('You have to specify a deep train set if withDeepCat is True')
 
@@ -1210,14 +1212,24 @@ def _extMomentsCompHists(trainSetWide, trainSetDeep=None, wideCat=1, withDeepCat
     goodWide = np.logical_and(trainSetWide.mags > magCut[0], trainSetWide.mags < magCut[1])
     starsWide = np.logical_and(trainSetWide.Y, goodWide)
     galsWide = np.logical_and(np.logical_not(trainSetWide.Y), goodWide)
-    p, binsExtWide = np.histogram(trainSetWide.X[:,0], bins=nBins, range=rangeExt)
-    p, binsMomWide = np.histogram(trainSetWide.X[:,1], bins=nBins, range=rangeMom)
-    axExtWide.hist(trainSetWide.X[starsWide][:,0], binsExtWide, histtype='step', color='blue')
-    axExtWide.hist(trainSetWide.X[galsWide][:,0], binsExtWide, histtype='step', color='red')
-    axMomWide.hist(trainSetWide.X[starsWide][:,1], binsMomWide, histtype='step', color='blue')
-    axMomWide.hist(trainSetWide.X[galsWide][:,1], binsMomWide, histtype='step', color='red')
+    p, binsExtWide = np.histogram(trainSetWide.X[:,1], bins=nBins, range=rangeExt)
+    p, binsMomWide = np.histogram(trainSetWide.X[:,2], bins=nBins, range=rangeMom)
+    axExtWide.hist(trainSetWide.X[starsWide][:,1], binsExtWide, histtype='step', color='blue')
+    axExtWide.hist(trainSetWide.X[galsWide][:,1], binsExtWide, histtype='step', color='red')
+    axMomWide.hist(trainSetWide.X[starsWide][:,2], binsMomWide, histtype='step', color='blue')
+    axMomWide.hist(trainSetWide.X[galsWide][:,2], binsMomWide, histtype='step', color='red')
     axExtWide.set_xlim(rangeExt)
     axMomWide.set_xlim(rangeMom)
+    for i in range(len(cutsExt)):
+        if withDeepCat:
+            ylim = axExtDeep.get_ylim()
+            axExtDeep.plot([cutsExt[i], cutsExt[i]], [ylim[0], ylim[1]], color='black', linestyle=style[i])
+            ylim = axMomDeep.get_ylim()
+            axMomDeep.plot([cutsMom[i], cutsMom[i]], [ylim[0], ylim[1]], color='black', linestyle=style[i])
+        ylim = axExtWide.get_ylim()
+        axExtWide.plot([cutsExt[i], cutsExt[i]], [ylim[0], ylim[1]], color='black', linestyle=style[i])
+        ylim = axMomWide.get_ylim()
+        axMomWide.plot([cutsMom[i], cutsMom[i]], [ylim[0], ylim[1]], color='black', linestyle=style[i])
     axExtWide.set_xlabel(r'$\mathrm{Mag}_{psf}-\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
     axMomWide.set_xlabel(r'$r_{tr}-(r_{tr})_{PSF}$ HSC-I', fontsize=fontSize)
     for ax in fig.get_axes():
@@ -1227,7 +1239,9 @@ def _extMomentsCompHists(trainSetWide, trainSetDeep=None, wideCat=1, withDeepCat
             tick.label.set_fontsize(fontSize)
     return fig
 
-def extMomentsCompPlots(wideCat=1, withDeepCat=True, choiceSize=50000, fontSize=16):
+def extMomentsCompPlots(wideCat=1, withDeepCat=False, choiceSize=50000, fontSize=16,
+                        cutsExt = [0.001, 0.01, 0.02], cutsMom = [0.01, 0.02, 0.03],
+                        style = ['--', '-', ':']):
     trainSetWide = _getTrainWide(wideCat=wideCat)
 
     if withDeepCat:
@@ -1254,11 +1268,11 @@ def extMomentsCompPlots(wideCat=1, withDeepCat=True, choiceSize=50000, fontSize=
         X = trainSetDeep.X; mag = trainSetDeep.mags
         for i in choice:
             if trainSetDeep.Y[i]:
-                axExtDeep.plot(mag[i], X[i, 0], marker='.', markersize=1, color='blue')
+                axExtDeep.plot(mag[i], X[i, 1], marker='.', markersize=1, color='blue')
                 axMomDeep.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='blue')
             else:
-                axExtDeep.plot(mag[i], X[i, 0], marker='.', markersize=1, color='red')
-                axMomDeep.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='red')
+                axExtDeep.plot(mag[i], X[i, 1], marker='.', markersize=1, color='red')
+                axMomDeep.plot(mag[i], 0.16*X[i, 2], marker='.', markersize=1, color='red')
     else:
         figScat = plt.figure(figsize=(8, 12), dpi=120)
         axExt = figScat.add_subplot(2, 1, 1)
@@ -1270,15 +1284,26 @@ def extMomentsCompPlots(wideCat=1, withDeepCat=True, choiceSize=50000, fontSize=
     X = trainSetWide.X; mag = trainSetWide.mags
     for i in choice:
         if trainSetWide.Y[i]:
-            axExt.plot(mag[i], X[i, 0], marker='.', markersize=1, color='blue')
-            axMom.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='blue')
+            axExt.plot(mag[i], X[i, 1], marker='.', markersize=1, color='blue')
+            axMom.plot(mag[i], 0.16*X[i, 2], marker='.', markersize=1, color='blue')
         else:
-            axExt.plot(mag[i], X[i, 0], marker='.', markersize=1, color='red')
-            axMom.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='red')
+            axExt.plot(mag[i], X[i, 1], marker='.', markersize=1, color='red')
+            axMom.plot(mag[i], 0.16*X[i, 2], marker='.', markersize=1, color='red')
     axExt.set_xlim((19.0, 27.0))
     axExt.set_ylim((-0.02, 0.2))
     axMom.set_xlim((19.0, 27.0))
     axMom.set_ylim((-0.04, 0.1))
+    for i in range(len(cutsExt)):
+        if withDeepCat:
+            xlim = axExtDeep.get_xlim()
+            axExtDeep.plot([xlim[0], xlim[1]], [cutsExt[i], cutsExt[i]], color='black', linestyle=style[i])
+            xlim = axMomDeep.get_xlim()
+            axMomDeep.plot([xlim[0], xlim[1]], [cutsMom[i], cutsMom[i]], color='black', linestyle=style[i])
+        xlim = axExt.get_xlim()
+        axExt.plot([xlim[0], xlim[1]], [cutsExt[i], cutsExt[i]], color='black', linestyle=style[i])
+        xlim = axMom.get_xlim()
+        axMom.plot([xlim[0], xlim[1]], [cutsMom[i], cutsMom[i]], color='black', linestyle=style[i])
+
     dirHome = os.path.expanduser('~')
     for ax in figScat.get_axes():
         for tick in ax.xaxis.get_major_ticks():
@@ -1288,11 +1313,45 @@ def extMomentsCompPlots(wideCat=1, withDeepCat=True, choiceSize=50000, fontSize=
     figScat.savefig(os.path.join(dirHome, 'Desktop/extMomComp.png'), dpi=120, bbox_inches='tight')
     if withDeepCat:
         figHist = _extMomentsCompHists(trainSetWide, trainSetDeep=trainSetDeep, wideCat=wideCat, withDeepCat=withDeepCat,
-                                       fontSize=fontSize)
+                                       fontSize=fontSize, cutsExt = [0.001, 0.01, 0.02], cutsMom = [0.0005, 0.005, 0.01],
+                                       style = ['--', '-', ':'])
     else:
-        figHist = _extMomentsCompHists(trainSetWide, wideCat=wideCat, withDeepCat=withDeepCat, fontSize=fontSize)
+        figHist = _extMomentsCompHists(trainSetWide, wideCat=wideCat, withDeepCat=withDeepCat, fontSize=fontSize,
+                                       cutsExt = [0.001, 0.01, 0.02], cutsMom = [0.0005, 0.005, 0.01],
+                                       style = ['--', '-', ':'])
     figHist.savefig(os.path.join(dirHome, 'Desktop/extMomCompHists.png'), dpi=120, bbox_inches='tight')
-    return figScat, figHist
+
+    clf = etl.BoxClf()
+    clf._setX(27.0)
+    for i in range(len(cutsExt)):
+        clf._setY(cutsExt[i])
+        trainWideSubExt = trainSetWide.genTrainSubset(cols=[0, 1])
+        train = etl.Training(trainWideSubExt, clf)
+        string = r'$\Delta\mathrm{Mag}=$'
+        if i == 0:
+            figScoresExtWide = train.plotScores(sType='all', xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I wide', linestyle=style[i],
+                                                legendLabel=string + r'${0}$'.format(cutsExt[i]), standardized=False)
+        else:
+            figScoresExtWide = train.plotScores(sType='all', fig=figScoresExtWide, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I wide', linestyle=style[i],
+                                                legendLabel=string + r'${0}$'.format(cutsExt[i]), standardized=False)
+    for ax in figScoresExtWide.get_axes():
+        ax.set_xlim((19.0, 26.0))
+    figScoresExtWide.savefig(os.path.join(dirHome, 'Desktop/extMomCompScoresWideExt.png'), dpi=120, bbox_inches='tight')
+    for i in range(len(cutsMom)):
+        clf._setY(cutsMom[i])
+        trainWideSubMom = trainSetWide.genTrainSubset(cols=[0, 2])
+        train = etl.Training(trainWideSubMom, clf)
+        string = r'$r_{tr}-(r_{tr})_{PSF}=$'
+        if i == 0:
+            figScoresMomWide = train.plotScores(sType='all', xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I wide', linestyle=style[i],
+                                                legendLabel=string + r'${0}$'.format(cutsMom[i]), standardized=False)
+        else:
+            figScoresMomWide = train.plotScores(sType='all', fig=figScoresMomWide, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I wide', linestyle=style[i],
+                                                legendLabel=string + r'${0}$'.format(cutsMom[i]), standardized=False)
+    for ax in figScoresMomWide.get_axes():
+        ax.set_xlim((19.0, 26.0))
+    figScoresMomWide.savefig(os.path.join(dirHome, 'Desktop/extMomCompScoresWideMom.png'), dpi=120, bbox_inches='tight')
+    return figScat, figHist, figScoresExtWide
 
 if __name__ == '__main__':
     #cutsPlots()
