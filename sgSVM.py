@@ -171,7 +171,7 @@ def getPsfShape(cat, band, type):
 def getShape(cat, band, type, deconvType='trace', fallBack=True):
     q = np.zeros((len(cat),))
     rDet = np.zeros(q.shape)
-    if type == 'hsm' or type == 'hsmDeconv':
+    if type == 'hsm' or type == 'hsmDeconv' or type == 'hsmDeconvLinear':
         momentsKeyHsm = cat.schema.find('shape.hsm.moments.'+band).getKey()
         momentsPsfKeyHsm = cat.schema.find('shape.hsm.psfMoments.'+band).getKey()
         momentsFlagsKeyHsm = cat.schema.find('shape.hsm.moments.flags.'+band).getKey()
@@ -209,6 +209,14 @@ def getShape(cat, band, type, deconvType='trace', fallBack=True):
                 rDet[i] = (xx + yy)/(momentsPsf.getIxx() + momentsPsf.getIyy())
             else:
                 raise ValueError('Deconvolution type {0} not implemented'.format(deconvType))
+        elif type == 'hsmDeconvLinear':
+            if not fallBack or not record.get(momentsFlagsKeyHsm):
+                moments = record.get(momentsKeyHsm)
+                momentsPsf = record.get(momentsPsfKeyHsm)
+            else:
+                moments = record.get(momentsKeySdss)
+                momentsPsf = record.get(momentsPsfKeySdss)
+            rDet[i] = moments.getTraceRadius() - momentsPsf.getTraceRadius()
         else:
             ellipse = afwGeom.ellipses.Axes(record.get(ellipseKey))
             A = ellipse.getA(); B = ellipse.getB()

@@ -10,11 +10,11 @@ from sklearn.grid_search import GridSearchCV
 
 import sgSVM as sgsvm
 
-kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-0.8, 'galDiff':3.9},
-               'r': {'lOffsetStar':-2.9, 'starDiff':3.4, 'lOffsetGal':0.5, 'galDiff':2.3},
-               'i': {'lOffsetStar':0.2, 'starDiff':0.5, 'lOffsetGal':1.7, 'galDiff':1.5},
-               'z': {'lOffsetStar':1.0, 'starDiff':0.2, 'lOffsetGal':2.0, 'galDiff':1.4},
-               'y': {'lOffsetStar':1.4, 'starDiff':0.2, 'lOffsetGal':2.6, 'galDiff':1.1},
+kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-2.8, 'galDiff':4.9},
+               'r': {'lOffsetStar':-2.9, 'starDiff':3.4, 'lOffsetGal':-2.5, 'galDiff':4.8},
+               'i': {'lOffsetStar':-0.05, 'starDiff':0.58, 'lOffsetGal':-2.3, 'galDiff':4.5},
+               'z': {'lOffsetStar':1.0, 'starDiff':0.2, 'lOffsetGal':-1.0, 'galDiff':3.9},
+               'y': {'lOffsetStar':1.4, 'starDiff':0.2, 'lOffsetGal':-1.6, 'galDiff':4.6},
               }
 
 def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
@@ -34,22 +34,61 @@ def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, l
 
     return good
 
-def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True):
-    if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
-       not isinstance(cat, afwTable.tableLib.SimpleCatalog):
-        cat = afwTable.SourceCatalog.readFits(cat)
-    flux = cat.get('cmodel.flux.'+band)
-    fluxPsf = cat.get('flux.psf.'+band)
-    ext = -2.5*np.log10(fluxPsf/flux)
-    good = np.logical_and(True, ext < 5.0)
-    if iBandCut:
-        good = dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band])
-    if noParent:
-        good = np.logical_and(good, cat.get('parent.'+band) == 0)
-    if magCut is not None:
-        good = np.logical_and(good, magI > magCut[0])
-        good = np.logical_and(good, magI < magCut[1])
+def getGoodStats(cat, bands=['g', 'r', 'i', 'z', 'y']):
+    if 'g' in bands:
+        hasPhotG = np.isfinite(cat.get('cmodel.flux.g'))
+    else:
+        hasPhotG = np.zeros(len(cat), dtype=bool)
+    if 'r' in bands:
+        hasPhotR = np.isfinite(cat.get('cmodel.flux.r'))
+    else:
+        hasPhotR = np.zeros(len(cat), dtype=bool)
+    if 'i' in bands:
+        hasPhotI = np.isfinite(cat.get('cmodel.flux.i'))
+    else:
+        hasPhotI = np.zeros(len(cat), dtype=bool)
+    if 'z' in bands:
+        hasPhotZ = np.isfinite(cat.get('cmodel.flux.z'))
+    else:
+        hasPhotZ = np.zeros(len(cat), dtype=bool)
+    if 'y' in bands:
+        hasPhotY = np.isfinite(cat.get('cmodel.flux.y'))
+    else:
+        hasPhotY = np.zeros(len(cat), dtype=bool)
+    hasPhotAny = np.logical_or(np.logical_or(np.logical_or(hasPhotG, hasPhotR), np.logical_or(hasPhotI, hasPhotZ)), hasPhotY)
+    print "I removed {0} objects that don't have photometry in any band".format(len(hasPhotAny) - np.sum(hasPhotAny))
+    good = hasPhotAny
+    for band in bands:
+        flux = cat.get('cmodel.flux.'+band)
+        fluxPsf = cat.get('flux.psf.'+band)
+        ext = -2.5*np.log10(fluxPsf/flux)
+        noExtExt = np.logical_and(good, ext < 5.0)
+        print "I removed {0} objects with extreme extendedness in {1}".format(np.sum(good)-np.sum(noExtExt), band)
+        good = noExtExt
+        noMatchOutlier = np.logical_and(good, dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band]))
+        print "I removed {0} match outliers in {1}".format(np.sum(good)-np.sum(noMatchOutlier), band)
+        good = noMatchOutlier
     return good
+
+def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True):
+    #if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
+    #   not isinstance(cat, afwTable.tableLib.SimpleCatalog):
+    #    cat = afwTable.SourceCatalog.readFits(cat)
+    #flux = cat.get('cmodel.flux.'+band)
+    #fluxPsf = cat.get('flux.psf.'+band)
+    #ext = -2.5*np.log10(fluxPsf/flux)
+    #good = np.logical_and(True, ext < 5.0)
+    #if iBandCut:
+    #    good = dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band])
+    #if noParent:
+    #    good = np.logical_and(good, cat.get('parent.'+band) == 0)
+    #if magCut is not None:
+    #    good = np.logical_and(good, magI > magCut[0])
+    #    good = np.logical_and(good, magI < magCut[1])
+    #return good
+    if not isinstance(band, list):
+        band = [band]
+    return getGoodStats(cat, bands=band)
 
 def getId(cat, band='i'):
     return cat.get('multId.'+band)
@@ -132,6 +171,10 @@ def getExtHsmDeconvNorm(cat, band='i'):
     q, ext = sgsvm.getShape(cat, band, 'hsmDeconv', deconvType='traceNorm')
     return ext
 
+def getExtHsmDeconvLinear(cat, band='i'):
+    q, ext = sgsvm.getShape(cat, band, 'hsmDeconvLinear')
+    return ext
+
 def getSnr(cat, band='i'):
     f = cat.get('cmodel.flux.'+band)
     fErr = cat.get('cmodel.flux.err.'+band)
@@ -197,6 +240,7 @@ inputsDict = {'id' : getId,
               'extHsm' : getExtHsm,
               'extHsmDeconv' : getExtHsmDeconv,
               'extHsmDeconvNorm' : getExtHsmDeconvNorm,
+              'extHsmDeconvLinear' : getExtHsmDeconvLinear,
               'snr' : getSnr,
               'snrPsf' : getSnrPsf,
               'snrAp' : getSnrAp,
@@ -603,11 +647,11 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
         good = np.ones((nRecords*len(bands),), dtype=bool)
     else:
         good = True
-    for i, band in enumerate(bands):
-        if concatBands:
-            good[i*nRecords:(i+1)*nRecords] = np.logical_and(good[i*nRecords:(i+1)*nRecords], getGood(cat, band=band))
-        else:
-            good = np.logical_and(good, getGood(cat, band=band))
+    if concatBands:
+        for i, band in enumerate(bands):
+            good[i*nRecords:(i+1)*nRecords] = np.logical_and(good[i*nRecords:(i+1)*nRecords], getGood(cat, band=bands))
+    else:
+        good = np.logical_and(good, getGood(cat, band=bands))
     if onlyFinite:
         for i in range(X.shape[1]):
             good = np.logical_and(good, np.isfinite(X[:,i]))

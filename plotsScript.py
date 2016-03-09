@@ -1162,6 +1162,138 @@ def peterPlot(trainClfs=False):
     figGauss.savefig('/u/garmilla/Desktop/colVsExtGaussians.png', bbox_inches='tight')
     return figScat, figGauss
 
+def _getTrainWide(wideCat=1):
+    if wideCat == 1:
+        catWide = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos1GRIZY.fits')
+    elif wideCat == 2:
+        catWide = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126Cosmos2GRIZY.fits')
+    else:
+        raise ValueError('I only have wide cats 1 and 2')
+    trainSetWide = etl.extractTrainSet(catWide, inputs=['ext', 'extHsmDeconvLinear'])
+    return trainSetWide
+
+def _getTrainDeep():
+    catDeep = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/matchDeepCoaddMeas-137520151126CosmosGRIZY.fits')
+    trainSetDeep = etl.extractTrainSet(catDeep, inputs=['ext', 'extHsmDeconvLinear'])
+    return trainSetDeep
+
+def _extMomentsCompHists(trainSetWide, trainSetDeep=None, wideCat=1, withDeepCat=True, fontSize=16,
+                         nBins=50, magCut=(24.0, 25.0), rangeExt=(-0.02, 0.3), rangeMom=(-0.2, 0.3)):
+    if withDeepCat and trainSetDeep is None:
+        raise ValueError('You have to specify a deep train set if withDeepCat is True')
+
+    if withDeepCat:
+        fig = plt.figure(figsize=(16, 12), dpi=120)
+        axExtDeep = fig.add_subplot(2, 2, 1)
+        axExtWide = fig.add_subplot(2, 2, 2)
+        axMomDeep = fig.add_subplot(2, 2, 3)
+        axMomWide = fig.add_subplot(2, 2, 4)
+        axExtDeep.set_title('Full Depth', fontsize=fontSize)
+        axExtWide.set_title('Wide Depth', fontsize=fontSize)
+        goodDeep = np.logical_and(trainSetDeep.mags > magCut[0], trainSetDeep.mags < magCut[1])
+        starsDeep = np.logical_and(trainSetDeep.Y, goodDeep)
+        galsDeep = np.logical_and(np.logical_not(trainSetDeep.Y), goodDeep)
+        p, binsExtDeep = np.histogram(trainSetDeep.X[:,0], bins=nBins, range=rangeExt)
+        p, binsMomDeep = np.histogram(trainSetDeep.X[:,1], bins=nBins, range=rangeMom)
+        axExtDeep.hist(trainSetDeep.X[starsDeep][:,0], binsExtDeep, histtype='step', color='blue')
+        axExtDeep.hist(trainSetDeep.X[galsDeep][:,0], binsExtDeep, histtype='step', color='red')
+        axMomDeep.hist(trainSetDeep.X[starsDeep][:,1], binsMomDeep, histtype='step', color='blue')
+        axMomDeep.hist(trainSetDeep.X[galsDeep][:,1], binsMomDeep, histtype='step', color='red')
+        axExtDeep.set_xlim(rangeExt)
+        axMomDeep.set_xlim(rangeMom)
+        axExtDeep.set_xlabel(r'$\mathrm{Mag}_{psf}-\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+        axMomDeep.set_xlabel(r'$r_{tr}-(r_{tr})_{PSF}$ HSC-I', fontsize=fontSize)
+    else:
+        fig = plt.figure(figsize=(8, 12), dpi=120)
+        axExtWide = fig.add_subplot(2, 1, 1)
+        axMomWide = fig.add_subplot(2, 1, 2)
+    goodWide = np.logical_and(trainSetWide.mags > magCut[0], trainSetWide.mags < magCut[1])
+    starsWide = np.logical_and(trainSetWide.Y, goodWide)
+    galsWide = np.logical_and(np.logical_not(trainSetWide.Y), goodWide)
+    p, binsExtWide = np.histogram(trainSetWide.X[:,0], bins=nBins, range=rangeExt)
+    p, binsMomWide = np.histogram(trainSetWide.X[:,1], bins=nBins, range=rangeMom)
+    axExtWide.hist(trainSetWide.X[starsWide][:,0], binsExtWide, histtype='step', color='blue')
+    axExtWide.hist(trainSetWide.X[galsWide][:,0], binsExtWide, histtype='step', color='red')
+    axMomWide.hist(trainSetWide.X[starsWide][:,1], binsMomWide, histtype='step', color='blue')
+    axMomWide.hist(trainSetWide.X[galsWide][:,1], binsMomWide, histtype='step', color='red')
+    axExtWide.set_xlim(rangeExt)
+    axMomWide.set_xlim(rangeMom)
+    axExtWide.set_xlabel(r'$\mathrm{Mag}_{psf}-\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    axMomWide.set_xlabel(r'$r_{tr}-(r_{tr})_{PSF}$ HSC-I', fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    return fig
+
+def extMomentsCompPlots(wideCat=1, withDeepCat=True, choiceSize=50000, fontSize=16):
+    trainSetWide = _getTrainWide(wideCat=wideCat)
+
+    if withDeepCat:
+        trainSetDeep = _getTrainDeep()
+
+    choice = np.random.choice(len(trainSetWide.X), size=choiceSize, replace=False)
+
+    if withDeepCat:
+        figScat = plt.figure(figsize=(16, 12), dpi=120)
+        axExtDeep = figScat.add_subplot(2, 2, 1)
+        axExtDeep.set_title('Full Depth', fontsize=fontSize)
+        axMomDeep = figScat.add_subplot(2, 2, 3)
+        axExt = figScat.add_subplot(2, 2, 2)
+        axExt.set_title('Wide Depth', fontsize=fontSize)
+        axMom = figScat.add_subplot(2, 2, 4)
+        axExtDeep.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+        axExtDeep.set_ylabel(r'$\mathrm{Mag}_{psf}-\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+        axMomDeep.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+        axMomDeep.set_ylabel(r'$r_{tr}-(r_{tr})_{PSF}$ HSC-I', fontsize=fontSize)
+        axExtDeep.set_xlim((19.0, 27.0))
+        axExtDeep.set_ylim((-0.02, 0.2))
+        axMomDeep.set_xlim((19.0, 27.0))
+        axMomDeep.set_ylim((-0.04, 0.1))
+        X = trainSetDeep.X; mag = trainSetDeep.mags
+        for i in choice:
+            if trainSetDeep.Y[i]:
+                axExtDeep.plot(mag[i], X[i, 0], marker='.', markersize=1, color='blue')
+                axMomDeep.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='blue')
+            else:
+                axExtDeep.plot(mag[i], X[i, 0], marker='.', markersize=1, color='red')
+                axMomDeep.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='red')
+    else:
+        figScat = plt.figure(figsize=(8, 12), dpi=120)
+        axExt = figScat.add_subplot(2, 1, 1)
+        axMom = figScat.add_subplot(2, 1, 2)
+    axExt.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    axExt.set_ylabel(r'$\mathrm{Mag}_{psf}-\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    axMom.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    axMom.set_ylabel(r'$r_{tr}-(r_{tr})_{PSF}$ HSC-I', fontsize=fontSize)
+    X = trainSetWide.X; mag = trainSetWide.mags
+    for i in choice:
+        if trainSetWide.Y[i]:
+            axExt.plot(mag[i], X[i, 0], marker='.', markersize=1, color='blue')
+            axMom.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='blue')
+        else:
+            axExt.plot(mag[i], X[i, 0], marker='.', markersize=1, color='red')
+            axMom.plot(mag[i], 0.16*X[i, 1], marker='.', markersize=1, color='red')
+    axExt.set_xlim((19.0, 27.0))
+    axExt.set_ylim((-0.02, 0.2))
+    axMom.set_xlim((19.0, 27.0))
+    axMom.set_ylim((-0.04, 0.1))
+    dirHome = os.path.expanduser('~')
+    for ax in figScat.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    figScat.savefig(os.path.join(dirHome, 'Desktop/extMomComp.png'), dpi=120, bbox_inches='tight')
+    if withDeepCat:
+        figHist = _extMomentsCompHists(trainSetWide, trainSetDeep=trainSetDeep, wideCat=wideCat, withDeepCat=withDeepCat,
+                                       fontSize=fontSize)
+    else:
+        figHist = _extMomentsCompHists(trainSetWide, wideCat=wideCat, withDeepCat=withDeepCat, fontSize=fontSize)
+    figHist.savefig(os.path.join(dirHome, 'Desktop/extMomCompHists.png'), dpi=120, bbox_inches='tight')
+    return figScat, figHist
+
 if __name__ == '__main__':
     #cutsPlots()
     #colExPlots()
@@ -1176,6 +1308,7 @@ if __name__ == '__main__':
     #magExtPlots()
     #extCutRoc()
     #highPostStarsShape(trainClfs=False)
-    colExtStarsTom()
+    #colExtStarsTom()
     #plt.show()
     #hstVsHscSize()
+    extMomentsCompPlots()
