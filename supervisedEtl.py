@@ -861,7 +861,8 @@ class Training(object):
             print "WARNING: I can't print the physical fit of a {0}".format(self.estimator.__class__)
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
-                   magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel='', standardized=True):
+                   magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel='',
+                   standardized=True, suptitle=None):
         if sType == 'test':
             mags = self.trainingSet.mags[self.trainingSet.testIndexes]
         elif sType == 'train':
@@ -915,6 +916,8 @@ class Training(object):
             axStar.set_ylabel(ylabel, fontsize=fontSize)
             axGal.set_ylim((0.0, 1.0))
             axStar.set_ylim((0.0, 1.0))
+            if suptitle is not None:
+                fig.suptitle(suptitle, fontsize=fontSize)
         else:
             axGal, axStar = fig.get_axes()
 
