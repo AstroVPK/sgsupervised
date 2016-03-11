@@ -485,7 +485,7 @@ def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
     dKpc = np.power(10.0, (rHsc-magRAbsHsc)/5)/100
     return magRAbsHsc, dKpc
 
-def plotPostMarginals(trainClfs=False):
+def plotPostMarginals(trainClfs=False, fontSize=18):
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -516,7 +516,7 @@ def plotPostMarginals(trainClfs=False):
     cNames = ['g-r', 'r-i', 'i-z', 'z-y']
     colsLims = [[(-0.5, 2.5), (-0.5, 3.5)], [(-0.5, 3.5), (-0.5, 1.5)], [(-0.5, 1.5), (-0.5, 1.0)]]
     for j, clf in enumerate(clfs):
-        fig = plt.figure(figsize=(20, 12), dpi=120)
+        fig = plt.figure(figsize=(24, 12), dpi=120)
         good = np.logical_and(magBins[j][0] < mags, mags < magBins[j][1])
         for i, cols in enumerate(colsList):
             clfMarginal = clf.getMarginalClf(cols=cols)
@@ -528,10 +528,9 @@ def plotPostMarginals(trainClfs=False):
             XInputErr = np.zeros((XInput.shape + (XInput.shape[-1],)))
             Z = clfMarginal.predict_proba(XInput, XInputErr)
             Z = Z.reshape(Xgrid.shape)
-            im = axCmap.imshow(Z, extent=[xRange[0], xRange[-1], yRange[0], yRange[-1]], aspect='auto', origin='lower')
-            cb = plt.colorbar(im)
-            axCmap.set_xlabel(cNames[i])
-            axCmap.set_ylabel(cNames[i+1])
+            im = axCmap.imshow(Z, extent=[xRange[0], xRange[-1], yRange[0], yRange[-1]], aspect='auto', origin='lower', vmin=0.0, vmax=1.0)
+            axCmap.set_xlabel(cNames[i], fontsize=fontSize)
+            axCmap.set_ylabel(cNames[i+1], fontsize=fontSize)
             axScat = fig.add_subplot(2, 3, i+4)
             for k in range(len(X[good])):
                 if Y[good][k]:
@@ -540,9 +539,19 @@ def plotPostMarginals(trainClfs=False):
                     axScat.plot(X[good][k, i], X[good][k, i+1], marker='.', markersize=1, color='red')
             axScat.set_xlim(colsLims[i][0])
             axScat.set_ylim(colsLims[i][1])
-            axScat.set_xlabel(cNames[i])
-            axScat.set_ylabel(cNames[i+1])
-        fig.suptitle('{0} < Mag HSC-I < {1}'.format(*magBins[j]))
+            axScat.set_xlabel(cNames[i], fontsize=fontSize)
+            axScat.set_ylabel(cNames[i+1], fontsize=fontSize)
+        cax = fig.add_axes([0.93, 0.525, 0.015, 0.375])
+        cb = plt.colorbar(im, cax=cax)
+        cb.set_label(r'$P(\mathrm{Star})$', fontsize=fontSize)
+        cb.ax.tick_params(labelsize=fontSize)
+        for ax in fig.get_axes():
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+        magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
+        fig.suptitle('{0} < {2} < {1}'.format(magBins[j][0], magBins[j][1], magString), fontsize=fontSize)
         dirHome = os.path.expanduser('~')
         fileFig = os.path.join(dirHome, 'Desktop/xdFitVsData{0}-{1}.png'.format(*magBins[j]))
         fig.savefig(fileFig, dpi=120, bbox_inches='tight')
@@ -1086,7 +1095,68 @@ def hstVsHscSize(snrCut=(10, 30)):
 
     plt.show()
 
-def peterPlot(trainClfs=False):
+def xdFitEllipsePlots(trainClfs=False, fontSize=18):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    idxBest = np.argmax(trainSet.snrs, axis=1)
+    idxArr = np.arange(len(trainSet.snrs))
+    mags = trainSet.getAllMags(band='i')
+    exts = trainSet.exts[idxArr, idxBest]
+    extsErr = 1.0/trainSet.snrs[idxArr, idxBest]
+    if trainClfs:
+        gaussians = [(15, 15), (10, 10), (10, 10), (10, 10)]
+        X, XErr, Y = trainSet.getTrainSet(standardized=False)
+        trainIdxs = trainSet.trainIndexes
+        mags = mags[trainIdxs]
+        clfs = []
+        for i, magBin in enumerate(magBins):
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsCols.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsCols.pkl', 'rb') as f:
+            clfs = pickle.load(f)
+    _colLabels = ['g-r', 'r-i', 'i-z', 'z-y']
+    _colsLims = [[(-0.5, 2.5), (-0.5, 3.5)], [(-0.5, 3.5), (-0.5, 1.5)], [(-0.5, 1.5), (-0.5, 1.0)]]
+    magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
+    for i, magBin in enumerate(magBins):
+        fig = plt.figure(figsize=(24, 12), dpi=120)
+        clf = clfs[i]
+        for j in range(3):
+            arrGen = [j, j+1]
+            subArray = (arrGen,)
+            xxSub, yySub = np.meshgrid(arrGen, arrGen, indexing='ij')
+            clfStar = clf.clfStar; clfGal = clf.clfGal
+            axStar = fig.add_subplot(2, 3, j+1)
+            axGal = fig.add_subplot(2, 3, j+4)
+            for k in range(clfStar.n_components):
+                draw_ellipse(clfStar.mu[k][subArray], clfStar.V[k][xxSub, yySub],
+                             scales=[2], ax=axStar, ec='k', fc='blue', alpha=clfStar.alpha[k])
+            for k in range(clfGal.n_components):
+                draw_ellipse(clfGal.mu[k][subArray], clfGal.V[k][xxSub, yySub],
+                             scales=[2], ax=axGal, ec='k', fc='red', alpha=clfGal.alpha[k])
+            axStar.set_xlabel(_colLabels[j], fontsize=fontSize)
+            axStar.set_ylabel(_colLabels[j+1], fontsize=fontSize)
+            axGal.set_xlabel(_colLabels[j], fontsize=fontSize)
+            axGal.set_ylabel(_colLabels[j+1], fontsize=fontSize)
+            axStar.set_xlim(_colsLims[j][0]); axStar.set_ylim(_colsLims[j][1])
+            axGal.set_xlim(_colsLims[j][0]); axGal.set_ylim(_colsLims[j][1])
+            if j == 1:
+                axStar.set_title(r'Stars {0} < {1} < {2}'.format(magBin[0], magString, magBin[1]), fontsize=fontSize)
+                axGal.set_title(r'Galaxies {0} < {1} < {2}'.format(magBin[0], magString, magBin[1]), fontsize=fontSize)
+            for ax in fig.get_axes():
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label.set_fontsize(fontSize)
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label.set_fontsize(fontSize)
+        fig.savefig('/u/garmilla/Desktop/xdFitEllipses{0}-{1}.png'.format(*magBin), dpi=120, bbox_inches='tight')
+
+def peterPlot(trainClfs=False, fontSize=16):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
@@ -1148,16 +1218,22 @@ def peterPlot(trainClfs=False):
                 axScat.scatter(X[:, 1][magCut][j], exts[magCut][j], marker='.', s=1, color='blue')
             else:
                 axScat.scatter(X[:, 1][magCut][j], exts[magCut][j], marker='.', s=1, color='red')
-        axGauss.set_xlabel('r-i')
-        axGauss.set_ylabel('Mag_psf-Mag_cmodel')
+        axGauss.set_xlabel('r-i', fontsize=fontSize)
+        axGauss.set_ylabel('Mag_psf-Mag_cmodel', fontsize=fontSize)
         axGauss.set_xlim((-0.5, 3.0))
         axGauss.set_ylim((-0.05, 1.0))
         axGauss.set_title('{0} < Mag_cmodel_i < {1}'.format(*magBin))
-        axScat.set_xlabel('r-i')
-        axScat.set_ylabel('Mag_psf-Mag_cmodel')
+        axScat.set_xlabel('r-i', fontsize=fontSize)
+        axScat.set_ylabel('Mag_psf-Mag_cmodel', fontsize=fontSize)
         axScat.set_xlim((-0.5, 3.0))
         axScat.set_ylim((-0.05, 1.0))
         axScat.set_title('{0} < Mag_cmodel_i < {1}'.format(*magBin))
+    for fig in [figScat, figGauss]:
+        for ax in fig.get_axes():
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
     figScat.savefig('/u/garmilla/Desktop/colVsExtScatter.png', bbox_inches='tight')
     figGauss.savefig('/u/garmilla/Desktop/colVsExtGaussians.png', bbox_inches='tight')
     return figScat, figGauss
@@ -1404,4 +1480,6 @@ if __name__ == '__main__':
     #colExtStarsTom()
     #plt.show()
     #hstVsHscSize()
-    extMomentsCompPlots()
+    #extMomentsCompPlots()
+    #xdFitEllipsePlots()
+    plotPostMarginals()
