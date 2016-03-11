@@ -179,7 +179,8 @@ def xdCV(trainSet, magMin=None, magMax=None, extMax=None, nCV=10,
          seed=1, n_jobs=1):
     np.random.seed(seed)
     X, XErr, Y = trainSet.getTrainSet(standardized=False)
-    mags = trainSet.getTrainMags(); exts = trainSet.getTrainExts()
+    mags = trainSet.getTrainMags(band='i')
+    exts = trainSet.getTrainExts(band='i')
     good = True
     if magMin is not None:
         good = np.logical_and(good, mags > magMin)

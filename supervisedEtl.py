@@ -511,11 +511,17 @@ class TrainingSet(object):
     def getTrainDecs(self):
         return self.decs[self.trainIndexes]
 
-    def getTrainMags(self):
-        return self.mags[self.trainIndexes]
+    def getTrainMags(self, band=None):
+        if band is None:
+            return self.mags[self.trainIndexes]
+        else:
+            return self.mags[:, self.bands.index(band)][self.trainIndexes]
 
-    def getTrainExts(self):
-        return self.exts[self.trainIndexes]
+    def getTrainExts(self, band=None):
+        if band is None:
+            return self.exts[self.trainIndexes]
+        else:
+            return self.exts[:, self.bands.index(band)][self.trainIndexes]
 
     def getTestSet(self, standardized=True):
         if standardized:
@@ -535,11 +541,17 @@ class TrainingSet(object):
     def getTestDecs(self):
         return self.decs[self.testIndexes]
 
-    def getTestMags(self):
-        return self.mags[self.testIndexes]
+    def getTestMags(self, band=None):
+        if band is None:
+            return self.mags[self.testIndexes]
+        else:
+            return self.mags[:, self.bands.index(band)][self.testIndexes]
 
-    def getTestExts(self):
-        return self.exts[self.testIndexes]
+    def getTestExts(self, band=None):
+        if band is None:
+            return self.exts[self.testIndexes]
+        else:
+            return self.exts[:, self.bands.index(band)][self.testIndexes]
 
     def getAllSet(self, standardized=True):
         if standardized:
@@ -559,11 +571,17 @@ class TrainingSet(object):
     def getAllDecs(self):
         return self.decs
 
-    def getAllMags(self):
-        return self.mags
+    def getAllMags(self, band=None):
+        if band is None:
+            return self.mags
+        else:
+            return self.mags[:, self.bands.index(band)]
 
-    def getAllExts(self):
-        return self.exts
+    def getAllExts(self, band=None):
+        if band is None:
+            return self.exts
+        else:
+            return self.exts[:, self.bands.index(band)]
 
     def applyPreTestTransform(self, X):
         return (X - self.XmeanTrain)/self.XstdTrain
