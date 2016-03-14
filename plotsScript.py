@@ -1095,17 +1095,109 @@ def hstVsHscSize(snrCut=(10, 30)):
 
     plt.show()
 
+def xdColorFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '-', ':']):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    mags = trainSet.getAllMags(band='i')
+    if trainClfs:
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
+        X, XErr, Y = trainSet.getTrainSet(standardized=False)
+        trainIdxs = trainSet.trainIndexes
+        mags = mags[trainIdxs]
+        clfs = []
+        for i, magBin in enumerate(magBins):
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsCols.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsCols.pkl', 'rb') as f:
+            clfs = pickle.load(f)
+    X, XErr, Y = trainSet.getTestSet(standardized=False)
+    mags = trainSet.getTestMags(band='i')
+    clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+    posteriors = clfXd.predict_proba(X, XErr, mags)
+    figPosts = plt.figure(figsize=(16, 6), dpi=120)
+    axPostT = figPosts.add_subplot(1, 2, 1)
+    axPostV = figPosts.add_subplot(1, 2, 2)
+    axPostT.set_xlabel('P(Star|Colors)', fontsize=fontSize)
+    axPostT.set_ylabel('Star Fraction', fontsize=fontSize)
+    axPostV.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    axPostV.set_ylabel('P(Star|Colors)', fontsize=fontSize)
+    posteriorBins = np.linspace(0.0, 1.0, num=20)
+    starFracs = np.zeros((len(posteriorBins)-1,))
+    barWidth = posteriorBins[1] - posteriorBins[0]
+    for i in range(len(posteriorBins)-1):
+        pBin = (posteriorBins[i], posteriorBins[i+1])
+        good = np.logical_and(posteriors > pBin[0], posteriors < pBin[1])
+        starFracs[i] = np.sum(Y[good])*1.0/np.sum(good)
+    axPostT.bar(posteriorBins[:-1], starFracs, barWidth, color='black', fill=False)
+    axPostT.plot(posteriorBins, posteriorBins, linestyle='--', color='black')
+    axPostT.set_xlim((0.0, 1.0))
+    choice = np.random.choice(len(X), size=len(X), replace=False)
+    for idx in choice:
+        if Y[idx]:
+            axPostV.plot(mags[idx], posteriors[idx], marker='.', markersize=2, color='blue')
+        else:
+            axPostV.plot(mags[idx], posteriors[idx], marker='.', markersize=2, color='red')
+    axPostV.set_xlim((18.0, 25.0))
+    for i, cut in enumerate(cuts):
+        axPostV.plot([18.0, 25.0], [cut, cut], linestyle=style[i], color='black')
+    for ax in figPosts.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    figPosts.savefig('/u/garmilla/Desktop/xdColsOnlyPosts.png', dpi=120, bbox_inches='tight')
+    train = etl.Training(trainSet, clfXd)
+    for i, cut in enumerate(cuts):
+        if i == 0:
+            figScores = train.plotScores(sType='test', xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle=style[i],
+                                         legendLabel=r'P(Star)={0}'.format(cut), standardized=False, magRange=(18.5, 25.0),
+                                         suptitle=r'P(Star | Colors) full depth', kargsPred={'threshold': cut})
+        else:
+            figScores = train.plotScores(sType='test', fig=figScores, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle=style[i],
+                                         legendLabel=r'P(Star)={0}'.format(cut), standardized=False, magRange=(18.5, 25.0),
+                                         kargsPred={'threshold': cut})
+    figScores.savefig('/u/garmilla/Desktop/xdColsOnlyScores.png', dpi=120, bbox_inches='tight')
+    figBias = plt.figure(figsize=(24, 18), dpi=120)
+    magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
+    colNames = ['g-r', 'r-i', 'i-z', 'z-y']
+    colLims = [(0.0, 1.5), (-0.2, 2.0), (-0.2, 1.0), (-0.2, 0.4)]
+    for i in range(3):
+        good = np.logical_and(Y, np.logical_and(mags > magBins[i][0], mags < magBins[i][1]))
+        for j in range(i*3+1, i*3+4):
+            ax = figBias.add_subplot(3, 3, j)
+            ax.set_title('{0} < {1} < {2}'.format(magBins[i][0], magString, magBins[i][1]), fontsize=fontSize)
+            ax.set_xlabel(colNames[j-i*3-1], fontsize=fontSize)
+            ax.set_ylabel(colNames[j-i*3], fontsize=fontSize)
+            ax.set_xlim(colLims[j-i*3-1])
+            ax.set_ylim(colLims[j-i*3])
+            im = ax.scatter(X[:, j-i*3-1][good], X[:, j-i*3][good], marker='.', s=10, c=posteriors[good], vmin=0.0, vmax=1.0,
+                            edgecolors='none')
+        bounds = ax.get_position().bounds
+        cax = figBias.add_axes([0.93, bounds[1], 0.015, bounds[3]])
+        cb = plt.colorbar(im, cax=cax)
+        cb.set_label(r'P(Star|Colors)', fontsize=fontSize)
+        cb.ax.tick_params(labelsize=fontSize)
+    for ax in figBias.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    figBias.savefig('/u/garmilla/Desktop/xdColsOnlyBias.png', dpi=120, bbox_inches='tight')
+
 def xdFitEllipsePlots(trainClfs=False, fontSize=18):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
-    idxBest = np.argmax(trainSet.snrs, axis=1)
-    idxArr = np.arange(len(trainSet.snrs))
     mags = trainSet.getAllMags(band='i')
-    exts = trainSet.exts[idxArr, idxBest]
-    extsErr = 1.0/trainSet.snrs[idxArr, idxBest]
     if trainClfs:
-        gaussians = [(15, 15), (10, 10), (10, 10), (10, 10)]
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
         X, XErr, Y = trainSet.getTrainSet(standardized=False)
         trainIdxs = trainSet.trainIndexes
         mags = mags[trainIdxs]
@@ -1482,4 +1574,5 @@ if __name__ == '__main__':
     #hstVsHscSize()
     #extMomentsCompPlots()
     #xdFitEllipsePlots()
-    plotPostMarginals()
+    #plotPostMarginals()
+    xdColorFitScores()

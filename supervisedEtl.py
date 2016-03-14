@@ -801,17 +801,41 @@ class Training(object):
         if hasattr(self.estimator, 'coef_'):
             self._computePhysicalFit()
 
-    def predictTrainLabels(self, standardized=True):
+    def predictTrainLabels(self, standardized=True, **kargsPred):
         X = self.trainingSet.getTrainSet(standardized=standardized)[0]
-        return self.clf.predict(X)
+        try:
+            return self.clf.predict(X, **kargsPred)
+        except TypeError:
+            X, XErr, Y = self.trainingSet.getTrainSet(standardized=standardized)
+            try:
+                return self.clf.predict(X, XErr, **kargsPred)
+            except TypeError:
+                mags = self.trainingSet.getTrainMags(band='i')
+                return self.clf.predict(X, XErr, mags, **kargsPred)
 
-    def predictTestLabels(self, standardized=True):
+    def predictTestLabels(self, standardized=True, **kargsPred):
         X = self.trainingSet.getTestSet(standardized=standardized)[0]
-        return self.clf.predict(X)
+        try:
+            return self.clf.predict(X, **kargsPred)
+        except TypeError:
+            X, XErr, Y = self.trainingSet.getTestSet(standardized=standardized)
+            try:
+                return self.clf.predict(X, XErr, **kargsPred)
+            except TypeError:
+                mags = self.trainingSet.getTestMags(band='i')
+                return self.clf.predict(X, XErr, mags, **kargsPred)
 
-    def predictAllLabels(self, standardized=True):
+    def predictAllLabels(self, standardized=True, **kargsPred):
         X = self.trainingSet.getAllSet(standardized=standardized)[0]
-        return self.clf.predict(X)
+        try:
+            return self.clf.predict(X, **kargsPred)
+        except TypeError:
+            X, XErr, Y = self.trainingSet.getAlltSet(standardized=standardized)
+            try:
+                return self.clf.predict(X, XErr, **kargsPred)
+            except TypeError:
+                mags = self.trainingSet.getAllMags(band='i')
+                return self.clf.predict(X, XErr, mags, **kargsPred)
 
     def _computePhysicalFit(self):
         if isinstance(self.clf, GridSearchCV):
@@ -880,13 +904,13 @@ class Training(object):
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
                    magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel='',
-                   standardized=True, suptitle=None):
+                   standardized=True, suptitle=None, kargsPred={}, xlim=None):
         if sType == 'test':
-            mags = self.trainingSet.mags[self.trainingSet.testIndexes]
+            mags = self.trainingSet.getTestMags(band='i')
         elif sType == 'train':
-            mags = self.trainingSet.mags[self.trainingSet.trainIndexes]
+            mags = self.trainingSet.getTrainMags(band='i')
         elif sType == 'all':
-            mags = self.trainingSet.mags
+            mags = self.trainingSet.getAllMags(band='i')
         else:
             raise ValueError("Scores of type {0} are not implemented".format(sType))
         
@@ -900,13 +924,13 @@ class Training(object):
         complGals = np.zeros(magsCenters.shape)
         purityGals = np.zeros(magsCenters.shape)
         if sType == 'test':
-            pred = self.predictTestLabels(standardized=standardized)
+            pred = self.predictTestLabels(standardized=standardized, **kargsPred)
             truth = self.trainingSet.getTestSet()[1]
         elif sType == 'train':
-            pred = self.predictTrainLabels(standardized=standardized)
+            pred = self.predictTrainLabels(standardized=standardized, **kargsPred)
             truth = self.trainingSet.getTrainSet()[1]
         elif sType == 'all':
-            pred = self.predictAllLabels(standardized=standardized)
+            pred = self.predictAllLabels(standardized=standardized, **kargsPred)
             truth = self.trainingSet.getAllSet()[1]
         for i in range(nBins):
             magCut = np.logical_and(mags > magsBins[i], mags < magsBins[i+1])
@@ -952,6 +976,10 @@ class Training(object):
 
         axGal.legend(loc='lower left', fontsize=fontSize-2)
         axStar.legend(loc='lower left', fontsize=fontSize-2)
+        
+        if xlim is not None:
+            for ax in fig.get_axes():
+                ax.set_xlim(xlim)
 
         return fig
 

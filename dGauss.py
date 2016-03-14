@@ -152,8 +152,46 @@ class XDClf(object):
         pred = np.logical_not(posteriorStar < threshold)
         return pred
 
-    def score(self, X, XErr, Y):
-        Ypred = self.predict(X, XErr)
+    def score(self, X, XErr, Y, threshold=0.5):
+        Ypred = self.predict(X, XErr, threshold=threshold)
+        score = np.sum(Y == Ypred)*1.0/len(Y)
+        return score
+
+
+class XDClfs(object):
+
+    def __init__(self, clfs, magBins):
+        self.clfs = clfs
+        self.magBins = magBins
+
+    def fit(self, X, XErr, Y, mags):
+        for i, magBin in enumerate(self.magBins):
+            good = np.logical_and(mags > magBin[0], mags < magBin[1])
+            self.clfs[i].fit(X[good], XErr[good], Y[good])
+
+    def getMarginalClf(self, cols=None):
+        if cols is None:
+            raise ValueError("You have to specify the columns you want to keep so that I can marginalizse over the rest.")
+        clfs = []
+        for i in range(len(self.clfs)):
+            clfs.append(self.clfs[i].getMarginalClf(cols=cols))
+        xdMarginal = XDClfs(clfs=self.clfs, magBins=self.magBins)
+        return xdMarginal
+
+    def predict_proba(self, X, XErr, mags, priorStar=None):
+        posteriorStar = np.zeros((len(X),))
+        for i, magBin in enumerate(self.magBins): 
+            good = np.logical_and(mags > magBin[0], mags < magBin[1])
+            posteriorStar[good] = self.clfs[i].predict_proba(X[good], XErr[good], priorStar=priorStar)
+        return posteriorStar
+
+    def predict(self, X, XErr, mags, threshold=0.5):
+        posteriorStar = self.predict_proba(X, XErr, mags)
+        pred = np.logical_not(posteriorStar < threshold)
+        return pred
+
+    def score(self, X, XErr, mags, Y, threshold=0.5):
+        Ypred = self.predict(X, XErr, threshold=threshold)
         score = np.sum(Y == Ypred)*1.0/len(Y)
         return score
 
