@@ -1248,6 +1248,30 @@ def xdFitEllipsePlots(trainClfs=False, fontSize=18):
                     tick.label.set_fontsize(fontSize)
         fig.savefig('/u/garmilla/Desktop/xdFitEllipses{0}-{1}.png'.format(*magBin), dpi=120, bbox_inches='tight')
 
+def extCorrPlot(time=1200.0, gal=100, star=10, real=100, fontSize=18):
+    cat = afwTable.SimpleCatalog.readFits('/u/garmilla/Source/sgsim/examples/output/sgExExpTime{0}FWHM0.5nGal{1}nStar{2}nReal{3}.fits'.format(time,
+                                          gal, star, real))
+    assert len(cat) % real == 0
+    mags = cat.get('cmodel.flux')
+    magsPsf = cat.get('flux.psf')
+    x = np.vstack((mags, magsPsf))
+    corrCoeffs = np.zeros((len(cat)/real,))
+    for i in range(len(cat)/real):
+        xCut = x[:, real*i:real*(i+1)]
+        good = np.logical_and(np.isfinite(xCut[0,:]), np.isfinite(xCut[1,:]))
+        corrMatrix = np.corrcoef(xCut[:, good])
+        corrCoeffs[i] = corrMatrix[0, 1]
+    fig = plt.figure(figsize=(8, 6), dpi=120)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlabel(r'$\mathrm{Corr}[\mathrm{Mag}_{psf}, \mathrm{Mag}_{cmodel}]$', fontsize=fontSize)
+    ax.hist(corrCoeffs, histtype='step', color='black', bins=15)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    plt.show()
+
 def peterPlot(trainClfs=False, fontSize=16):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -1575,4 +1599,5 @@ if __name__ == '__main__':
     #extMomentsCompPlots()
     #xdFitEllipsePlots()
     #plotPostMarginals()
-    xdColorFitScores()
+    #xdColorFitScores()
+    extCorrPlot()
