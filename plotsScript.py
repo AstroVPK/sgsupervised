@@ -1248,29 +1248,70 @@ def xdFitEllipsePlots(trainClfs=False, fontSize=18):
                     tick.label.set_fontsize(fontSize)
         fig.savefig('/u/garmilla/Desktop/xdFitEllipses{0}-{1}.png'.format(*magBin), dpi=120, bbox_inches='tight')
 
-def extCorrPlot(time=1200.0, gal=100, star=10, real=100, fontSize=18):
+def extCorrPlot(time=1200.0, gal=1000, star=100, real=100, fontSize=18):
     cat = afwTable.SimpleCatalog.readFits('/u/garmilla/Source/sgsim/examples/output/sgExExpTime{0}FWHM0.5nGal{1}nStar{2}nReal{3}.fits'.format(time,
                                           gal, star, real))
     assert len(cat) % real == 0
     mags = cat.get('cmodel.flux')
     magsPsf = cat.get('flux.psf')
+    extsTrue = -2.5*np.log10(cat.get('true.flux.psf')/cat.get('true.flux.cmodel'))
+    stellar = cat.get('stellar')
+    assert np.sum(stellar) % real == 0
+    assert (len(cat)-np.sum(stellar)) % real == 0
     x = np.vstack((mags, magsPsf))
     corrCoeffs = np.zeros((len(cat)/real,))
+    extsTrueScat = np.zeros(corrCoeffs.shape)
+    corrCoeffsStar = np.zeros((np.sum(stellar)/real,))
+    corrCoeffsGal = np.zeros(((len(cat)-np.sum(stellar))/real,))
+    countStar = 0; countGal = 0
     for i in range(len(cat)/real):
         xCut = x[:, real*i:real*(i+1)]
         good = np.logical_and(np.isfinite(xCut[0,:]), np.isfinite(xCut[1,:]))
         corrMatrix = np.corrcoef(xCut[:, good])
         corrCoeffs[i] = corrMatrix[0, 1]
-    fig = plt.figure(figsize=(8, 6), dpi=120)
-    ax = fig.add_subplot(1, 1, 1)
-    ax.set_xlabel(r'$\mathrm{Corr}[\mathrm{Mag}_{psf}, \mathrm{Mag}_{cmodel}]$', fontsize=fontSize)
-    ax.hist(corrCoeffs, histtype='step', color='black', bins=15)
+        try:
+            assert np.all(extsTrue[real*i:real*(i+1)] == extsTrue[real*i])
+        except AssertionError:
+            try:
+                assert np.all(np.isnan(extsTrue[real*i:real*(i+1)]))
+            except AssertionError:
+                import ipdb; ipdb.set_trace()
+        extsTrueScat[i] = extsTrue[real*i]
+        if stellar[real*i]:
+            assert np.all(stellar[real*i:real*(i+1)])
+            corrCoeffsStar[countStar] = corrMatrix[0, 1]
+            countStar += 1
+        else:
+            assert np.all(np.logical_not(stellar[real*i:real*(i+1)]))
+            corrCoeffsGal[countGal] = corrMatrix[0, 1]
+            countGal += 1
+    rangeHist = (corrCoeffs.min(), corrCoeffs.max())
+    fig = plt.figure(figsize=(16, 6), dpi=120)
+    axHist = fig.add_subplot(1, 2, 1)
+    axHist.set_xlabel(r'$\mathrm{Corr}[\mathrm{Mag}_{psf}, \mathrm{Mag}_{cmodel}]$', fontsize=fontSize)
+    axHist.set_ylabel('Counts', fontsize=fontSize)
+    axHist.hist(corrCoeffsStar, histtype='step', color='blue', bins=20, range=rangeHist, label='Stars')
+    axHist.hist(corrCoeffsGal, histtype='step', color='red', bins=20, range=rangeHist, label='Galaxies')
+    axHist.hist(corrCoeffs, histtype='step', color='black', bins=20, range=rangeHist, label='Total')
+    axHist.set_xlim((-0.2, 1.0))
+    axHist.legend(loc='upper left', fontsize=fontSize)
+    axScatter = fig.add_subplot(1, 2, 2)
+    axScatter.set_xlabel(r'$\mathrm{Mag}_{psf} - \mathrm{Mag}_{cmodel}$ Without Noise', fontsize=fontSize)
+    axScatter.set_ylabel(r'$\mathrm{Corr}[\mathrm{Mag}_{psf}, \mathrm{Mag}_{cmodel}]$', fontsize=fontSize)
+    choice = np.random.choice(len(corrCoeffs), size=len(corrCoeffs), replace=False)
+    for idx in choice:
+        if stellar[real*idx]:
+            axScatter.plot(extsTrueScat[idx], corrCoeffs[idx], marker='.', markersize=3, color='blue')
+        else:
+            axScatter.plot(extsTrueScat[idx], corrCoeffs[idx], marker='.', markersize=3, color='red')
+    axScatter.set_xlim((-0.01, 1.0))
+    axScatter.set_ylim((-0.2, 1.0))
     for ax in fig.get_axes():
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    plt.show()
+    fig.savefig('/u/garmilla/Desktop/magPsfMagCmodelCorr.png', bbox_inches='tight')
 
 def peterPlot(trainClfs=False, fontSize=16):
     with open('trainSet.pkl', 'rb') as f:
