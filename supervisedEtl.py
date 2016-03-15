@@ -598,6 +598,29 @@ class TrainingSet(object):
             else:
                 return self.exts[:, self.bands.index(band)]
 
+    def genColExtTrainSet(self, mode='all', standardized=False):
+        if mode == 'all':
+            XSub, XErrSub, Y = self.getAllSet(standardized=standardized)
+            exts, extsErr = self.getAllExts(band='best')
+        elif mode == 'train':
+            XSub, XErrSub, Y = self.getTrainSet(standardized=standardized)
+            exts, extsErr = self.getTrainExts(band='best')
+        elif mode == 'test':
+            XSub, XErrSub, Y = self.getTestSet(standardized=standardized)
+            exts, extsErr = self.getTestExts(band='best')
+        else:
+            raise ValueError("Mode {0} doesn't exist!".format(mode))
+        X = np.concatenate((XSub, exts[:,None]), axis=1)
+        covShapeSub = XErrSub.shape
+        dimSub = covShapeSub[1]
+        assert dimSub == covShapeSub[2]
+        covShape = (covShapeSub[0], dimSub+1, dimSub+1)
+        XErr = np.zeros(covShape)
+        xxSub, yySub = np.meshgrid(np.arange(dimSub), np.arange(dimSub), indexing='ij')
+        XErr[:, xxSub, yySub] = XErrSub
+        XErr[:, dimSub, dimSub] = extsErr
+        return X, XErr, Y
+    
     def applyPreTestTransform(self, X):
         return (X - self.XmeanTrain)/self.XstdTrain
 
@@ -919,7 +942,7 @@ class Training(object):
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
                    magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel='',
-                   standardized=True, suptitle=None, kargsPred={}, xlim=None):
+                   standardized=True, suptitle=None, kargsPred={}, xlim=None, colExt=False):
         if sType == 'test':
             mags = self.trainingSet.getTestMags(band='i')
         elif sType == 'train':
@@ -938,15 +961,20 @@ class Training(object):
         purityStars = np.zeros(magsCenters.shape)
         complGals = np.zeros(magsCenters.shape)
         purityGals = np.zeros(magsCenters.shape)
-        if sType == 'test':
-            pred = self.predictTestLabels(standardized=standardized, **kargsPred)
-            truth = self.trainingSet.getTestSet()[1]
-        elif sType == 'train':
-            pred = self.predictTrainLabels(standardized=standardized, **kargsPred)
-            truth = self.trainingSet.getTrainSet()[1]
-        elif sType == 'all':
-            pred = self.predictAllLabels(standardized=standardized, **kargsPred)
-            truth = self.trainingSet.getAllSet()[1]
+        if colExt:
+            X, XErr, Y = self.trainingSet.genColExtTrainSet(mode=sType)
+            pred = self.clf.predict(X, XErr, mags, **kargsPred)
+            truth = Y
+        else:
+            if sType == 'test':
+                pred = self.predictTestLabels(standardized=standardized, **kargsPred)
+                truth = self.trainingSet.getTestSet()[1]
+            elif sType == 'train':
+                pred = self.predictTrainLabels(standardized=standardized, **kargsPred)
+                truth = self.trainingSet.getTrainSet()[1]
+            elif sType == 'all':
+                pred = self.predictAllLabels(standardized=standardized, **kargsPred)
+                truth = self.trainingSet.getAllSet()[1]
         for i in range(nBins):
             magCut = np.logical_and(mags > magsBins[i], mags < magsBins[i+1])
             predCut = pred[magCut]; truthCut = truth[magCut]
