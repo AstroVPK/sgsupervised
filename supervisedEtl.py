@@ -521,7 +521,11 @@ class TrainingSet(object):
         if band is None:
             return self.exts[self.trainIndexes]
         else:
-            return self.exts[:, self.bands.index(band)][self.trainIndexes]
+            if band == 'best':
+                idxBest = np.argmax(self.snrs[self.trainIndexes], axis=1)
+                return self.exts[self.trainIndexes][np.arange(self.nTrain), idxBest]
+            else:
+                return self.exts[:, self.bands.index(band)][self.trainIndexes]
 
     def getTestSet(self, standardized=True):
         if standardized:
@@ -551,7 +555,11 @@ class TrainingSet(object):
         if band is None:
             return self.exts[self.testIndexes]
         else:
-            return self.exts[:, self.bands.index(band)][self.testIndexes]
+            if band == 'best':
+                idxBest = np.argmax(self.snrs[self.testIndexes], axis=1)
+                return self.exts[self.testIndexes][np.arange(self.nTest), idxBest]
+            else:
+                return self.exts[:, self.bands.index(band)][self.testIndexes]
 
     def getAllSet(self, standardized=True):
         if standardized:
@@ -581,7 +589,11 @@ class TrainingSet(object):
         if band is None:
             return self.exts
         else:
-            return self.exts[:, self.bands.index(band)]
+            if band == 'best':
+                idxBest = np.argmax(self.snrs, axis=1)
+                return self.exts[np.arange(self.nTotal), idxBest]
+            else:
+                return self.exts[:, self.bands.index(band)]
 
     def applyPreTestTransform(self, X):
         return (X - self.XmeanTrain)/self.XstdTrain
