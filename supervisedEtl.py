@@ -523,7 +523,8 @@ class TrainingSet(object):
         else:
             if band == 'best':
                 idxBest = np.argmax(self.snrs[self.trainIndexes], axis=1)
-                return self.exts[self.trainIndexes][np.arange(self.nTrain), idxBest]
+                idxArr = np.arange(self.nTrain)
+                return self.exts[self.trainIndexes][idxArr, idxBest], 1.0/self.snrs[self.trainIndexes][idxArr, idxBest]
             else:
                 return self.exts[:, self.bands.index(band)][self.trainIndexes]
 
@@ -557,7 +558,8 @@ class TrainingSet(object):
         else:
             if band == 'best':
                 idxBest = np.argmax(self.snrs[self.testIndexes], axis=1)
-                return self.exts[self.testIndexes][np.arange(self.nTest), idxBest]
+                idxArr = np.arange(self.nTest)
+                return self.exts[self.testIndexes][idxArr, idxBest], 1.0/self.snrs[self.testIndexes][idxArr, idxBest]
             else:
                 return self.exts[:, self.bands.index(band)][self.testIndexes]
 
@@ -591,7 +593,8 @@ class TrainingSet(object):
         else:
             if band == 'best':
                 idxBest = np.argmax(self.snrs, axis=1)
-                return self.exts[np.arange(self.nTotal), idxBest]
+                idxArr = np.arange(self.nTotal)
+                return self.exts[idxArr, idxBest], 1.0/self.snrs[idxArr, idxBest]
             else:
                 return self.exts[:, self.bands.index(band)]
 
