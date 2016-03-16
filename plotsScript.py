@@ -4,7 +4,8 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
-from sklearn.svm import LinearSVC
+from sklearn.grid_search import GridSearchCV
+from sklearn.svm import SVC, LinearSVC
 from sklearn.neighbors.kde import KernelDensity
 from astroML.plotting.tools import draw_ellipse
 
@@ -1285,6 +1286,52 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             tick.label.set_fontsize(fontSize)
     figBias.savefig('/u/garmilla/Desktop/xdColExtBias.png', dpi=120, bbox_inches='tight')
 
+def xdColExtSvmScores(trainXd=False, trainSvm=False, fontSize=18):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    if trainXd:
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
+        X, XErr, Y = trainSet.genColExtTrainSet(mode='train')
+        mags = trainSet.getTrainMags(band='i')
+        clfs = []
+        for i, magBin in enumerate(magBins):
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfs.append(clf)
+        with open('clfsColsExt.pkl', 'wb') as f:
+            pickle.dump(clfs, f)
+    else:
+        with open('clfsColsExt.pkl', 'rb') as f:
+            clfs = pickle.load(f)
+    if trainSvm:
+        X, XErr, Y = trainSet.genColExtTrainSet(mode='train', standardized=True)
+        #param_grid = {'C':[0.1, 1.0, 10.0], 'gamma': [0.1, 1.0, 10.0]}
+        #clfSvm = GridSearchCV(SVC(), param_grid=param_grid)
+        clfSvm = SVC(C=10.0, gamma=0.1)
+        clfSvm.fit(X, Y)
+        #print "Best parameters:"
+        #print clfSvm.best_params_
+        with open('clfSvm.pkl', 'wb') as f:
+            #pickle.dump(clfSvm.best_estimator_, f)
+            pickle.dump(clfSvm, f)
+    else:
+        with open('clfSvm.pkl', 'rb') as f:
+            clfSvm = pickle.load(f)
+    X, XErr, Y = trainSet.genColExtTrainSet(mode='test')
+    clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+    train = etl.Training(trainSet, clfXd)
+    figScores = train.plotScores(sType='test', xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle='-',
+                                 legendLabel=r'XD P(Star)=0.5 Cut', standardized=False, magRange=(18.5, 25.0),
+                                 suptitle=r'XD vs SVM', kargsPred={'threshold': 0.5}, colExt=True)
+    train = etl.Training(trainSet, clfSvm)
+    figScores = train.plotScores(sType='test', fig=figScores, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle='--',
+                                 legendLabel=r'SVM', standardized=False, magRange=(18.5, 25.0), svm=True)
+    plt.show()
+    figScores.savefig('/u/garmilla/Desktop/xdColExtSvmScores.png', dpi=120, bbox_inches='tight')
+
 def xdFitEllipsePlots(trainClfs=False, fontSize=18):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -1743,4 +1790,5 @@ if __name__ == '__main__':
     #xdColorFitScores()
     #extCorrPlot()
     #peterPlot()
-    xdColExtFitScores()
+    #xdColExtFitScores()
+    xdColExtSvmScores()
