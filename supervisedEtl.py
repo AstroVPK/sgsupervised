@@ -495,7 +495,10 @@ class TrainingSet(object):
 
     def getTrainSet(self, standardized=True):
         if standardized:
-            return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
+            if hasattr(self, 'XErr'):
+                return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.XErr[self.trainIndexes], self.Y[self.trainIndexes]
+            else:
+                return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
         else:
             if hasattr(self, 'XErr'):
                 return self.X[self.trainIndexes], self.XErr[self.trainIndexes], self.Y[self.trainIndexes]
@@ -530,7 +533,10 @@ class TrainingSet(object):
 
     def getTestSet(self, standardized=True):
         if standardized:
-            return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
+            if hasattr(self, 'XErr'):
+                return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.XErr[self.testIndexes], self.Y[self.testIndexes]
+            else:
+                return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
         else:
             if hasattr(self, 'XErr'):
                 return self.X[self.testIndexes], self.XErr[self.testIndexes], self.Y[self.testIndexes]
@@ -598,7 +604,8 @@ class TrainingSet(object):
             else:
                 return self.exts[:, self.bands.index(band)]
 
-    def genColExtTrainSet(self, mode='all', standardized=False):
+    def genColExtTrainSet(self, mode='all', standardized=False, extsMean=None, extsStd=None,
+                          magsMean=None, magsStd=None):
         if mode == 'all':
             XSub, XErrSub, Y = self.getAllSet(standardized=standardized)
             exts, extsErr = self.getAllExts(band='best')
@@ -608,8 +615,51 @@ class TrainingSet(object):
         elif mode == 'test':
             XSub, XErrSub, Y = self.getTestSet(standardized=standardized)
             exts, extsErr = self.getTestExts(band='best')
+            if standardized:
+                if extsMean is None:
+                    try:
+                        extsMean = self.extsMean
+                    except AttributeError:
+                        extsMean = np.mean(self.getTrainExts(band='best')[0])
+                if extsStd is None:
+                    try:
+                        extsStd = self.extsStd
+                    except AttributeError:
+                        extsStd = np.std(self.getTrainExts(band='best')[0])
+                if magsMean is None:
+                    try:
+                        magsMean = self.magsMean
+                    except AttributeError:
+                        magsMean = np.mean(self.getTrainMags(band='i'))
+                if magsStd is None:
+                    try:
+                        magsStd = self.magsStd
+                    except AttributeError:
+                        magsStd = np.std(self.getTrainMags(band='i'))
         else:
             raise ValueError("Mode {0} doesn't exist!".format(mode))
+        if standardized: 
+            if mode == 'all':
+                mags = self.getAllMags(band='i')
+            elif mode == 'train':
+                mags = self.getTrainMags(band='i')
+            elif mode == 'test':
+                mags = self.getTestMags(band='i')
+            if extsMean is None or extsStd is None:
+                print "Computing and saving standardization transform for extendedness"
+                extsMean = np.mean(exts)
+                extsStd = np.std(exts)
+            if magsMean is None or magsStd is None:
+                print "Computing and saving standardization transform for magnitudes"
+                magsMean = np.mean(mags)
+                magsStd = np.std(mags)
+            exts = (exts - extsMean)/extsStd
+            mags = (mags - magsMean)/magsStd
+            self.extsMean = extsMean
+            self.extsStd = extsStd
+            self.magsMean = magsMean
+            self.magsStd = magsStd
+            XSub = np.concatenate((XSub, mags[:,None]), axis=1)
         X = np.concatenate((XSub, exts[:,None]), axis=1)
         covShapeSub = XErrSub.shape
         dimSub = covShapeSub[1]
@@ -942,7 +992,7 @@ class Training(object):
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
                    magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel='',
-                   standardized=True, suptitle=None, kargsPred={}, xlim=None, colExt=False):
+                   standardized=True, suptitle=None, kargsPred={}, xlim=None, colExt=False, svm=False):
         if sType == 'test':
             mags = self.trainingSet.getTestMags(band='i')
         elif sType == 'train':
@@ -962,8 +1012,13 @@ class Training(object):
         complGals = np.zeros(magsCenters.shape)
         purityGals = np.zeros(magsCenters.shape)
         if colExt:
+            assert not svm
             X, XErr, Y = self.trainingSet.genColExtTrainSet(mode=sType)
             pred = self.clf.predict(X, XErr, mags, **kargsPred)
+            truth = Y
+        elif svm:
+            X, XErr, Y = self.trainingSet.genColExtTrainSet(mode=sType, standardized=True)
+            pred = self.clf.predict(X)
             truth = Y
         else:
             if sType == 'test':
