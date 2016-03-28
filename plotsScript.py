@@ -1,9 +1,13 @@
 import os
 import pickle
+import re
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from scipy.interpolate import interp1d
+from scipy.integrate import cumtrapz
+import pyfits
 from sklearn.grid_search import GridSearchCV
 from sklearn.svm import SVC, LinearSVC
 from sklearn.neighbors.kde import KernelDensity
@@ -331,6 +335,80 @@ def _fitGriSlHsc(gr, ri, sigma=None):
 def _fitRizSlHsc(ri, iz, sigma=None):
     popt, pcov = curve_fit(_getMsIzHsc, ri, iz, p0=(0.0, 0.5, 0.0, 0.0), sigma=sigma)
     return popt, pcov
+
+def _loadCKData(stringZ, stringT):
+    data = pyfits.getdata('/u/garmilla/Data/castelli_kurucz/ck{0}/ck{0}_{1}.fits'.format(stringZ, stringT))
+    return data
+
+def _loadFilter(band):
+    if band == 'y':
+        band = band.upper()
+    filt = np.loadtxt('/u/garmilla/Data/HSC/HSC-{0}.dat'.format(band))
+    filt[:,0] = filt[:,0]*10
+    filt[:,0] = np.sort(filt[:,0])
+    return filt
+
+def _regridSed(lamSed, fSed, lamFilt):
+    interpSed = interp1d(lamSed, fSed, kind='linear')
+    fSedRegrid = np.zeros(lamFilt.shape) 
+    for i in range(len(fSedRegrid)):
+        fSedRegrid[i] = interpSed(lamFilt[i])
+    return fSedRegrid
+    
+def computeColor(stringZ, stringT, stringG, color):
+    dataCK = _loadCKData(stringZ, stringT)
+    bandBlue = color[0]
+    bandRed = color[2]
+    filterBlue = _loadFilter(bandBlue)
+    filterRed = _loadFilter(bandRed)
+    sedL = dataCK.field('WAVELENGTH')
+    sedF = dataCK.field(stringG)
+    sedBlue = _regridSed(sedL, sedF, filterBlue[:,0])
+    sedRed = _regridSed(sedL, sedF, filterRed[:,0])
+    yBlue = filterBlue[:,0]*filterBlue[:,1]*sedBlue
+    yRed = filterRed[:,0]*filterRed[:,1]*sedRed
+    fluxBlue = cumtrapz(yBlue, x=filterBlue[:,0])[-1]
+    fluxRed = cumtrapz(yRed, x=filterRed[:,0])[-1]
+    return -2.5*np.log10(fluxBlue/fluxRed)
+
+def plotCKModels(colorX='g-r', colorY = 'r-i', zs=['m25', 'p00'], 
+                 gs=['g30', 'g35', 'g40', 'g45', 'g50'], ts='all', markersZ=['o', 'v'],
+                 labelsZ=[r'[M/H]=-2.5', r'[M/H]=0.0'], fontSize=18):
+    assert isinstance(zs, list)
+    assert isinstance(gs, list)
+    assert isinstance(markersZ, list)
+    assert len(markersZ) == len(zs)
+    if ts != 'all':
+        assert isinstance(ts, list)
+    fig = plt.figure(dpi=120)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlabel(colorX, fontsize=fontSize)
+    ax.set_ylabel(colorY, fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    for i, stringZ in enumerate(zs):
+        if ts == 'all':
+            fList = os.listdir('/u/garmilla/Data/castelli_kurucz/ck{0}/'.format(stringZ))
+            tList = []
+            for f in fList:
+                match = re.match(r"ck[mp][0-9][0-9]_([0-9]*).fits", f)
+                if match is not None:
+                    tList.append(match.group(1))
+        else:
+            tList = ts
+        for j, stringT in enumerate(tList):
+            for k, stringG in enumerate(gs):
+                cX = computeColor(stringZ, stringT, stringG, colorX)
+                cY = computeColor(stringZ, stringT, stringG, colorY)
+                if j == 0 and k == 0:
+                    ax.plot(cX, cY, marker=markersZ[i], color='black', label=labelsZ[i])
+                else:
+                    ax.plot(cX, cY, marker=markersZ[i], color='black')
+    ax.legend(loc='upper left', fontsize=fontSize)
+    return fig
 
 def makeIsoDensityPlot(xData, yData, xRange, yRange, bandwidth=0.1, xlabel=None, ylabel=None,
                        printMaxDens=False, levels=None):
