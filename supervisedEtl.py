@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
@@ -1421,3 +1422,37 @@ class BoxClf(object):
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         return fig
+
+class IsochroneReader(object):
+
+    def __init__(self, stringZ='p00', stringA='p0', suffix=None, stringY=None):
+        self.isochrones = {}
+        if stringY is None:
+            fName = '/u/garmilla/Data/isochrones/SDSSugriz/feh{0}afe{1}.SDSSugriz'.format(stringZ, stringA)
+        else:
+            fName = '/u/garmilla/Data/isochrones/SDSSugriz/feh{0}afe{1}y{2}.SDSSugriz'.format(stringZ, stringA, stringY)
+        if suffix is not None:
+            fName += '_2'
+        self.readFile(fName)
+
+    def readFile(self, fName):
+       with open(fName) as f: 
+           for line in f:
+               if line[:4] == '#AGE':
+                   match = re.match(r"^#AGE=([0-9][0-9].[0-9]*| [0-9].[0-9]*) EEPS=([0-9]*)", line)
+                   age = float(match.group(1))
+                   eeps = int(match.group(2))
+               elif line[:4] == '#EEP':
+                   cols = line.split()
+                   cols[0] = cols[0][1:]
+                   self.isochrones[age] = {}
+                   for col in cols:
+                       self.isochrones[age][col] = np.zeros((eeps,))
+                   count = 0
+               elif line[0] == ' ':
+                   values = line.split() 
+                   for i, col in enumerate(cols):
+                       self.isochrones[age][col][count] = values[i]
+                   count += 1
+               else:
+                   continue
