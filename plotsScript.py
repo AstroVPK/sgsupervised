@@ -636,32 +636,32 @@ def plotPostMarginals(trainClfs=False, fontSize=18):
         fig.savefig(fileFig, dpi=120, bbox_inches='tight')
 
 def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=None, YProbRiz=None,
-                 title='Pure Morphology Classifier'):
+                 title='Pure Morphology Classifier', limDkpc=(0.0, 100.0)):
     if withProb:
         assert YProbGri is not None
         assert YProbRiz is not None
     fig = plt.figure(figsize=(10, 12), dpi=120)
     axExt = fig.add_subplot(3, 2, 1)
     axExt.scatter(dKpc, exts, marker='.', s=1)
-    axExt.set_xlim((0.0, 50.0))
+    axExt.set_xlim(limDkpc)
     axExt.set_ylim((-0.01, 0.1))
     axExt.set_xlabel('d (kpc)')
     axExt.set_ylabel('Mag_psf-Mag_cmodel')
     axMagAbs = fig.add_subplot(3, 2, 2)
     axMagAbs.scatter(dKpc, magRAbsHsc, marker='.', s=1)
-    axMagAbs.set_xlim((0.0, 50.0))
+    axMagAbs.set_xlim(limDkpc)
     axMagAbs.set_ylim((4.0, 16.0))
     axMagAbs.set_xlabel('d (kpc)')
     axMagAbs.set_ylabel('Absolute Magnitude HSC-R')
     axCol = fig.add_subplot(3, 2, 3)
     axCol.scatter(dKpc, X[:,1], marker='.', s=1)
-    axCol.set_xlim((0.0, 50.0))
+    axCol.set_xlim(limDkpc)
     axCol.set_ylim((-0.2, 2.0))
     axCol.set_xlabel('d (kpc)')
     axCol.set_ylabel('r-i')
     axMag = fig.add_subplot(3, 2, 4)
     axMag.scatter(dKpc, magRHsc, marker='.', s=1)
-    axMag.set_xlim((0.0, 50.0))
+    axMag.set_xlim(limDkpc)
     axMag.set_xlabel('d (kpc)')
     axMag.set_ylabel('Apparent Magnitude HSC-R')
     axGr = fig.add_subplot(3, 2, 5)
@@ -687,13 +687,14 @@ def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=No
     fig.suptitle(title)
     return fig
 
-def truthStarsTom(frac=None):
+def truthStarsTom(frac=None, cutRedGr=1.2, cutRedRi=0.7):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     X, XErr, Y = trainSet.getTestSet(standardized=False)
     mags = trainSet.getTestMags()
     exts = trainSet.getTestExts()
-    X = X[Y]; mags = mags[Y]; exts = exts[Y]
+    good = np.logical_and(np.logical_and(Y, X[:,0] < cutRedGr), X[:,1] < cutRedRi)
+    X = X[good]; mags = mags[good]; exts = exts[good]
     magRAbsHsc, dKpc = getParallax(mags[:,0], mags[:,1], mags[:,2], mags[:,3])
     if frac is not None:
         choice = np.random.choice(len(X), size=int(frac*len(X)), replace=False)
@@ -704,7 +705,7 @@ def truthStarsTom(frac=None):
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
-def boxStarsTom():
+def boxStarsTom(cutRedGr=1.2, cutRedRi=0.7):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     clf = etl.BoxClf()
@@ -728,7 +729,7 @@ def boxStarsTom():
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
-def colExtStarsTom(trainClfs=False):
+def colExtStarsTom(trainClfs=False, cutRedGr=1.2, cutRedRi=0.7):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
@@ -787,7 +788,8 @@ def colExtStarsTom(trainClfs=False):
         YProbGri[magCut] = clfMarginalGri.predict_proba(X[magCut][:, [0, 1]], XErr[magCut][:, rowsV, colsV])
         rowsV, colsV = np.meshgrid([1, 2], [1, 2], indexing='ij')
         YProbRiz[magCut] = clfMarginalRiz.predict_proba(X[magCut][:, [1, 2]], XErr[magCut][:, rowsV, colsV])
-    good = np.logical_and(YProb > 0.9, mags < 26.0)
+    good = np.logical_and(YProb > 0.8, mags < 25.0)
+    good = np.logical_and(np.logical_and(good, X[:,0] < cutRedGr), X[:,1] < cutRedRi)
     mags = trainSet.getTestMags()
     magRAbsHsc, dKpc = getParallax(mags[good,0], mags[good,1], mags[good,2], mags[good,3])
     exts = exts[testIdxs][good]
