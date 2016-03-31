@@ -1425,12 +1425,12 @@ class BoxClf(object):
 
 class IsochroneReader(object):
 
-    def __init__(self, stringZ='p00', stringA='p0', suffix=None, stringY=None):
+    def __init__(self, iType='LSST', stringZ='p00', stringA='p0', suffix=None, stringY=None):
         self.isochrones = {}
         if stringY is None:
-            fName = '/u/garmilla/Data/isochrones/SDSSugriz/feh{0}afe{1}.SDSSugriz'.format(stringZ, stringA)
+            fName = '/u/garmilla/Data/isochrones/{0}/feh{1}afe{2}.{0}'.format(iType, stringZ, stringA)
         else:
-            fName = '/u/garmilla/Data/isochrones/SDSSugriz/feh{0}afe{1}y{2}.SDSSugriz'.format(stringZ, stringA, stringY)
+            fName = '/u/garmilla/Data/isochrones/{0}/feh{1}afe{2}y{3}.{0}'.format(iType, stringZ, stringA, stringY)
         if suffix is not None:
             fName += '_2'
         self.readFile(fName)
