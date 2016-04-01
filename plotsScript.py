@@ -371,6 +371,37 @@ def computeColor(stringZ, stringT, stringG, color):
     fluxRed = cumtrapz(yRed, x=filterRed[:,0])[-1]
     return -2.5*np.log10(fluxBlue/fluxRed)
 
+def plotIsochrones(fontSize=18):
+    colors = ['g-r', 'r-i', 'i-z', 'z-y']
+    colLimX = [(0.1, 2.5), (0.0, 1.3), (-0.05, 0.6), (-0.05 ,0.35)]
+    colLimY = [(3.0, 15.0), (3.0, 14.0), (3.0, 13.0), (3.0, 12.0)]
+    iReaderHaloIn = etl.IsochroneReader(stringZ='m15', stringA='p2')
+    iReaderHaloOut = etl.IsochroneReader(stringZ='m20', stringA='p2')
+    iReaderDiskThick = etl.IsochroneReader(stringZ='m05', stringA='p2')
+    fig = plt.figure(figsize=(16, 12), dpi=120)
+    for i, color in enumerate(colors):
+        ax = fig.add_subplot(2, 2, i+1)
+        ax.set_xlabel(color, fontsize=fontSize)
+        ax.set_ylabel(color[0] + ' (Absolute Magnitude)', fontsize=fontSize)
+        ax.set_xlim(colLimX[i])
+        ax.set_ylim(colLimY[i])
+        bandBlue = 'LSST_' + color[0]
+        bandRed = 'LSST_' + color[2]
+        ax.plot(iReaderHaloOut.isochrones[10.0][bandBlue]-iReaderHaloOut.isochrones[10.0][bandRed], iReaderHaloOut.isochrones[10.0][bandBlue], 
+        linestyle='-', color='black', label=r'Age=10 Gyr, [Fe/H]=-2.0, [$\alpha$/Fe]=0.2')
+        ax.plot(iReaderHaloIn.isochrones[10.0][bandBlue]-iReaderHaloIn.isochrones[10.0][bandRed], iReaderHaloIn.isochrones[10.0][bandBlue],
+        linestyle='--', color='black', label=r'Age=10 Gyr, [Fe/H]=-1.5, [$\alpha$/Fe]=0.2')
+        ax.plot(iReaderDiskThick.isochrones[10.0][bandBlue]-iReaderDiskThick.isochrones[10.0][bandRed], iReaderDiskThick.isochrones[10.0][bandBlue], 
+        linestyle=':', color='black', label=r'Age=10 Gyr, [Fe/H]=-0.5, [$\alpha$/Fe]=0.2')
+        ax.invert_yaxis()
+        ax.legend(loc='upper right')
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    return fig
+
 def plotCKModels(colorX='g-r', colorY = 'r-i', zs=['m25', 'p00'], 
                  gs=['g30', 'g35', 'g40', 'g45', 'g50'], ts='all', markersZ=['o', 'v'],
                  labelsZ=[r'[M/H]=-2.5', r'[M/H]=0.0'], fontSize=18):
