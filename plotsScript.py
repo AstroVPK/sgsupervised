@@ -373,11 +373,12 @@ def computeColor(stringZ, stringT, stringG, color):
 
 def plotIsochrones(fontSize=18):
     colors = ['g-r', 'r-i', 'i-z', 'z-y']
-    colLimX = [(0.1, 2.5), (0.0, 1.3), (-0.05, 0.6), (-0.05 ,0.35)]
+    colLimX = [(0.1, 2.0), (0.0, 1.3), (-0.05, 0.6), (-0.04 ,0.30)]
     colLimY = [(3.0, 15.0), (3.0, 14.0), (3.0, 13.0), (3.0, 12.0)]
     iReaderHaloIn = etl.IsochroneReader(stringZ='m15', stringA='p2')
     iReaderHaloOut = etl.IsochroneReader(stringZ='m20', stringA='p2')
     iReaderDiskThick = etl.IsochroneReader(stringZ='m05', stringA='p2')
+    iReaderDiskThin = etl.IsochroneReader(stringZ='p00', stringA='p0')
     fig = plt.figure(figsize=(16, 12), dpi=120)
     for i, color in enumerate(colors):
         ax = fig.add_subplot(2, 2, i+1)
@@ -388,11 +389,13 @@ def plotIsochrones(fontSize=18):
         bandBlue = 'LSST_' + color[0]
         bandRed = 'LSST_' + color[2]
         ax.plot(iReaderHaloOut.isochrones[10.0][bandBlue]-iReaderHaloOut.isochrones[10.0][bandRed], iReaderHaloOut.isochrones[10.0][bandBlue], 
-        linestyle='-', color='black', label=r'Age=10 Gyr, [Fe/H]=-2.0, [$\alpha$/Fe]=0.2')
+                linestyle='-', color='black', label=r'Outer Halo')
         ax.plot(iReaderHaloIn.isochrones[10.0][bandBlue]-iReaderHaloIn.isochrones[10.0][bandRed], iReaderHaloIn.isochrones[10.0][bandBlue],
-        linestyle='--', color='black', label=r'Age=10 Gyr, [Fe/H]=-1.5, [$\alpha$/Fe]=0.2')
+                linestyle='--', color='black', label=r'Inner Halo')
         ax.plot(iReaderDiskThick.isochrones[10.0][bandBlue]-iReaderDiskThick.isochrones[10.0][bandRed], iReaderDiskThick.isochrones[10.0][bandBlue], 
-        linestyle=':', color='black', label=r'Age=10 Gyr, [Fe/H]=-0.5, [$\alpha$/Fe]=0.2')
+                linestyle=':', color='black', label=r'Thick Disk')
+        ax.plot(iReaderDiskThin.isochrones[10.0][bandBlue]-iReaderDiskThin.isochrones[10.0][bandRed], iReaderDiskThin.isochrones[10.0][bandBlue], 
+                linestyle='-.', color='black', label=r'Solar')
         ax.invert_yaxis()
         ax.legend(loc='upper right')
     for ax in fig.get_axes():
@@ -400,6 +403,41 @@ def plotIsochrones(fontSize=18):
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
+    dirHome = os.path.expanduser('~')
+    fileFig = os.path.join(dirHome, 'Desktop/isochrones.png')
+    fig.savefig(fileFig, dpi=120, bbox_inches='tight')
+    return fig
+
+def plotCmdPhotoParallax(trainClfs=False, fontSize=18):
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    with open('clfsColsExt.pkl', 'rb') as f:
+        clfs = pickle.load(f)
+    clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+    mags = trainSet.getAllMags(band='i')
+    magsR = trainSet.getAllMags(band='r')
+    X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
+    posteriors = clfXd.predict_proba(X, XErr, mags)
+    fig = plt.figure(dpi=120)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlim((-0.10, 1.9))
+    ax.set_ylim((27.5, 19.0))
+    ax.set_xlabel('r-i', fontsize=fontSize)
+    ax.set_ylabel('r', fontsize=fontSize)
+    plt.plot([0.4, 0.4], [19.0, 24.0], color='black', linestyle='--')
+    plt.plot([-0.10, 0.4], [24.0, 24.0], color='black', linestyle='--')
+    sc = ax.scatter(X[:,1][Y], magsR[Y], c=posteriors[Y], marker=".", s=5, edgecolors="none")
+    cb = plt.colorbar(sc)
+    cb.set_label(r'$P(\mathrm{Star})$', fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    dirHome = os.path.expanduser('~')
+    fileFig = os.path.join(dirHome, 'Desktop/cmdParallax.png')
+    fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
 def plotCKModels(colorX='g-r', colorY = 'r-i', zs=['m25', 'p00'], 
