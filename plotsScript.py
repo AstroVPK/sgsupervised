@@ -322,18 +322,22 @@ def _getPColors(g, r, i):
 def _getMsGrSdss(ri):
     return 1.39*(1.0 - np.exp(-4.9*ri**3 - 2.45*ri**2 -1.68*ri - 0.050))
 
-def _getMsGrHsc(ri, A, B, C, D, E):
-    return A*(1.0 - np.exp(B*ri**3 + C*ri**2 + D*ri + E))
+def _getMsGrHsc(ri, A, B):
+    #return A*(1.0 - np.exp(B*ri**3 + C*ri**2 + D*ri + E))
+    return A + B*ri
 
-def _getMsIzHsc(ri, A, B, C, D):
-    return A + B*ri + C*ri**2 + D*ri**3
+def _getMsIzHsc(ri, A, B):
+    #return A + B*ri + C*ri**2 + D*ri**3
+    return A + B*ri
 
 def _fitGriSlHsc(gr, ri, sigma=None):
-    popt, pcov = curve_fit(_getMsGrHsc, ri, gr, p0=(1.39, -4.9, -2.45, -1.68, -0.050), sigma=sigma)
+    #popt, pcov = curve_fit(_getMsGrHsc, ri, gr, p0=(1.39, -4.9, -2.45, -1.68, -0.050), sigma=sigma)
+    popt, pcov = curve_fit(_getMsGrHsc, ri, gr, p0=(0.0, 2.0), sigma=sigma)
     return popt, pcov
 
 def _fitRizSlHsc(ri, iz, sigma=None):
-    popt, pcov = curve_fit(_getMsIzHsc, ri, iz, p0=(0.0, 0.5, 0.0, 0.0), sigma=sigma)
+    #popt, pcov = curve_fit(_getMsIzHsc, ri, iz, p0=(0.0, 0.5, 0.0, 0.0), sigma=sigma)
+    popt, pcov = curve_fit(_getMsGrHsc, ri, iz, p0=(0.0, 0.5), sigma=sigma)
     return popt, pcov
 
 def _loadCKData(stringZ, stringT):
@@ -513,7 +517,8 @@ def makeIsoDensityPlot(xData, yData, xRange, yRange, bandwidth=0.1, xlabel=None,
         axContour.set_ylabel(ylabel)
     return fig
 
-def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, minDens=None, sigma=None):
+def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, minDens=None, sigma=None,
+                        cutRi=None, cutGr=None, cutIz=None, fontSize=18):
     if gr is None and iz is None or\
        gr is not None and iz is not None:
         raise ValueError("You need to provide one, and only one, of these two colors: g-r, and i-z.")
@@ -534,12 +539,19 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
             assert minDens is not None
             densValues = np.exp(kde.score_samples(values))
             good = np.logical_and(True, densValues > minDens)
+            if cutRi is not None:
+                good = np.logical_and(good, ri < cutRi)
+            if cutGr is not None:
+                good = np.logical_and(good, gr < cutGr)
+            if cutIz is not None:
+                good = np.logical_and(good, iz < cutIz)
             if sigma is not None:
                 sigma = sigma[good]
             if iz is None:
                 popt, pcov = _fitGriSlHsc(gr[good], ri[good], sigma=sigma)
             else:
                 popt, pcov = _fitRizSlHsc(ri[good], iz[good], sigma=sigma)
+                popt = (0.0, 0.5)
             print popt
             paramTuple = popt
         if iz is None:
@@ -547,53 +559,76 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
         else:
             izSl = _getMsIzHsc(riSl, *paramTuple)
     else:
+        good = np.ones(ri.shape, dtype=bool)
         if iz is None:
             grSl = _getMsGrSdss(riSl)
         else:
-            raise ValueError("I don't have a riz fir for SDSS stars. Fit to HSC stars instead.")
+            pass
+            #raise ValueError("I don't have a riz fit for SDSS stars. Fit to HSC stars instead.")
 
     fig = plt.figure(figsize=(16, 6), dpi=120)
     axData = fig.add_subplot(1, 2, 1)
     if iz is None:
         axData.scatter(gr[good], ri[good], marker='.', s=1, color='blue')
-        axData.scatter(gr[np.logical_not(good)], ri[np.logical_not(good)], marker='.', s=1, color='red')
+        axData.scatter(gr[np.logical_not(good)], ri[np.logical_not(good)], marker='.', s=1, color='blue')
         axData.set_xlim((-0.05, 1.7))
         axData.set_ylim((-0.05, 2.5))
-        axData.set_xlabel('g-r')
-        axData.set_ylabel('r-i')
+        axData.set_xlabel('g-r', fontsize=fontSize)
+        axData.set_ylabel('r-i', fontsize=fontSize)
         axData.plot(grSl, riSl, color='black')
     else:
         axData.scatter(ri[good], iz[good], marker='.', s=1, color='blue')
-        axData.scatter(ri[np.logical_not(good)], iz[np.logical_not(good)], marker='.', s=1, color='red')
+        axData.scatter(ri[np.logical_not(good)], iz[np.logical_not(good)], marker='.', s=1, color='blue')
         axData.set_xlim((-0.05, 2.5))
         axData.set_ylim((-0.05, 1.2))
-        axData.set_xlabel('r-i')
-        axData.set_ylabel('i-z')
-        axData.plot(riSl, izSl, color='black')
+        axData.set_xlabel('r-i', fontsize=fontSize)
+        axData.set_ylabel('i-z', fontsize=fontSize)
+        try:
+            axData.plot(riSl, izSl, color='black')
+        except UnboundLocalError: 
+            pass
     axContour = fig.add_subplot(1, 2, 2)
     print "Maximum contour value is {0}".format(zz.max())
     if iz is None:
         ctr = axContour.contour(xx, yy, zz, levels=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6])
     else:
         ctr = axContour.contour(xx, yy, zz, levels=[0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.10, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2])
-    #plt.colorbar(ctr)
+    plt.colorbar(ctr)
     if iz is None:
         axContour.set_xlim((-0.05, 1.7))
         axContour.set_ylim((-0.05, 2.5))
         axContour.plot(grSl, riSl, color='black')
-        axContour.set_xlabel('g-r')
-        axContour.set_ylabel('r-i')
+        axContour.set_xlabel('g-r', fontsize=fontSize)
+        axContour.set_ylabel('r-i', fontsize=fontSize)
     else:
         axContour.set_xlim((-0.05, 2.5))
         axContour.set_ylim((-0.05, 1.2))
-        axContour.plot(riSl, izSl, color='black')
-        axContour.set_xlabel('r-i')
-        axContour.set_ylabel('i-z')
+        try:
+            axContour.plot(riSl, izSl, color='black')
+        except UnboundLocalError:
+            pass
+        axContour.set_xlabel('r-i', fontsize=fontSize)
+        axContour.set_ylabel('i-z', fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
     return fig
 
-def makePhotParallaxPlot():
+def makePhotParallaxPlots(fontSize=18):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    X, XErr, Y = trainSet.getAllSet(standardized=False)
+    mags = trainSet.getAllMags(band='i')
+    good = np.logical_and(Y, mags < 24.0)
+    gr = X[:,0][good]
+    ri = X[:,1][good]
+    iz = X[:,2][good]
+    figGri = _makeIsoDensityPlot(ri, gr=gr, withHsc=True, minDens=0.0, cutRi=0.6)
+    figRiz = _makeIsoDensityPlot(ri, iz=iz, withHsc=True, minDens=0.0, cutIz=0.2)
     paramsGri = (1.30038049, -7.78059699, -0.71791215, -0.76761088, -0.19133522)
-    paramsRiz = (-0.01068287, 0.59929634,-0.19457149, 0.05357661)
+    paramsRiz = (-0.01068287, 0.59929634, -0.19457149, 0.05357661)
     riSl = np.linspace(-0.05, 2.5, num=100)
     grSl = _getMsGrHsc(riSl, *paramsGri)
     izSl = _getMsIzHsc(riSl, *paramsRiz)
@@ -601,16 +636,21 @@ def makePhotParallaxPlot():
     absMagRSdss = _getAbsoluteMagR(riSdss)
     absMagRHsc = absMagRSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
     absMagGHsc = absMagRHsc + grSl
-
+    absMagIHsc = absMagRHsc - riSl
     fig = plt.figure(figsize=(16, 6), dpi=120)
     axGr = fig.add_subplot(1, 2, 1)
     axRi = fig.add_subplot(1, 2, 2)
-    axGr.plot(grSl, absMagGHsc, color='black')
-    axRi.plot(riSl, absMagRHsc, color='black')
-    axGr.set_xlabel('g-r')
-    axRi.set_xlabel('r-i')
-    axGr.set_ylabel('Absolute Magnitude HSC-G')
-    axRi.set_ylabel('Absolute Magnitude HSC-R')
+    axGr.plot(riSl, absMagRHsc, color='black')
+    axRi.plot(izSl, absMagIHsc, color='black')
+    axGr.set_xlabel('r-i', fontsize=fontSize)
+    axRi.set_xlabel('i-z', fontsize=fontSize)
+    axGr.set_ylabel('Absolute Magnitude HSC-R', fontsize=fontSize)
+    axRi.set_ylabel('Absolute Magnitude HSC-I', fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
     return fig
 
 def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
