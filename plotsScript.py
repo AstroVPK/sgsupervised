@@ -533,7 +533,10 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
     positions = np.vstack([xx.ravel(), yy.ravel()]).T
     zz = np.reshape(np.exp(kde.score_samples(positions)), xx.shape)
 
-    riSl = np.linspace(-0.05, 2.5, num=100)
+    if cutRi is None:
+       riSl = np.linspace(-0.05, 2.5, num=100)
+    else:
+       riSl = np.linspace(-0.05, cutRi, num=100)
     if withHsc:
         if paramTuple is None:
             assert minDens is not None
@@ -549,9 +552,10 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
                 sigma = sigma[good]
             if iz is None:
                 popt, pcov = _fitGriSlHsc(gr[good], ri[good], sigma=sigma)
+                popt = (0.12554858, 1.99441746)
             else:
                 popt, pcov = _fitRizSlHsc(ri[good], iz[good], sigma=sigma)
-                popt = (0.0, 0.5)
+                popt = (-0.02, 0.55)
             print popt
             paramTuple = popt
         if iz is None:
@@ -576,6 +580,8 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
         axData.set_xlabel('g-r', fontsize=fontSize)
         axData.set_ylabel('r-i', fontsize=fontSize)
         axData.plot(grSl, riSl, color='black')
+        if cutRi is not None:
+            axData.plot([-0.1, 2.0], [cutRi, cutRi], color='black', linestyle='--')
     else:
         axData.scatter(ri[good], iz[good], marker='.', s=1, color='blue')
         axData.scatter(ri[np.logical_not(good)], iz[np.logical_not(good)], marker='.', s=1, color='blue')
@@ -587,17 +593,22 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
             axData.plot(riSl, izSl, color='black')
         except UnboundLocalError: 
             pass
+        if cutRi is not None and cutIz is not None:
+            axData.plot([cutRi, cutRi], [-0.1, cutIz], color='black', linestyle='--')
+            axData.plot([-0.1, cutRi], [cutIz, cutIz], color='black', linestyle='--')
     axContour = fig.add_subplot(1, 2, 2)
     print "Maximum contour value is {0}".format(zz.max())
     if iz is None:
         ctr = axContour.contour(xx, yy, zz, levels=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6])
     else:
         ctr = axContour.contour(xx, yy, zz, levels=[0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.10, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2])
-    plt.colorbar(ctr)
+    #plt.colorbar(ctr)
     if iz is None:
         axContour.set_xlim((-0.05, 1.7))
         axContour.set_ylim((-0.05, 2.5))
         axContour.plot(grSl, riSl, color='black')
+        if cutRi is not None:
+            axContour.plot([-0.1, 2.0], [cutRi, cutRi], color='black', linestyle='--')
         axContour.set_xlabel('g-r', fontsize=fontSize)
         axContour.set_ylabel('r-i', fontsize=fontSize)
     else:
@@ -607,6 +618,9 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
             axContour.plot(riSl, izSl, color='black')
         except UnboundLocalError:
             pass
+        if cutRi is not None and cutIz is not None:
+            axContour.plot([cutRi, cutRi], [-0.1, cutIz], color='black', linestyle='--')
+            axContour.plot([-0.1, cutRi], [cutIz, cutIz], color='black', linestyle='--')
         axContour.set_xlabel('r-i', fontsize=fontSize)
         axContour.set_ylabel('i-z', fontsize=fontSize)
     for ax in fig.get_axes():
@@ -625,11 +639,13 @@ def makePhotParallaxPlots(fontSize=18):
     gr = X[:,0][good]
     ri = X[:,1][good]
     iz = X[:,2][good]
-    figGri = _makeIsoDensityPlot(ri, gr=gr, withHsc=True, minDens=0.0, cutRi=0.6)
-    figRiz = _makeIsoDensityPlot(ri, iz=iz, withHsc=True, minDens=0.0, cutIz=0.2)
-    paramsGri = (1.30038049, -7.78059699, -0.71791215, -0.76761088, -0.19133522)
-    paramsRiz = (-0.01068287, 0.59929634, -0.19457149, 0.05357661)
-    riSl = np.linspace(-0.05, 2.5, num=100)
+    figGri = _makeIsoDensityPlot(ri, gr=gr, withHsc=True, minDens=0.0, cutRi=0.4)
+    figRiz = _makeIsoDensityPlot(ri, iz=iz, withHsc=True, minDens=0.0, cutIz=0.2, cutRi=0.4)
+    #paramsGri = (1.30038049, -7.78059699, -0.71791215, -0.76761088, -0.19133522)
+    #paramsRiz = (-0.01068287, 0.59929634, -0.19457149, 0.05357661)
+    paramsGri = (0.12554858, 1.99441746)
+    paramsRiz = (-0.02, 0.55)
+    riSl = np.linspace(-0.05, 0.4, num=100)
     grSl = _getMsGrHsc(riSl, *paramsGri)
     izSl = _getMsIzHsc(riSl, *paramsRiz)
     grSdss, riSdss, izSdss = _fromHscToSdss(grSl, riSl, izSl, giveClosest=True)
@@ -646,12 +662,22 @@ def makePhotParallaxPlots(fontSize=18):
     axRi.set_xlabel('i-z', fontsize=fontSize)
     axGr.set_ylabel('Absolute Magnitude HSC-R', fontsize=fontSize)
     axRi.set_ylabel('Absolute Magnitude HSC-I', fontsize=fontSize)
+    axGr.set_xlim((-0.05, 0.4))
+    axRi.set_xlim((-0.05, 0.2))
+    axGr.xaxis.set_ticks([0.0, 0.1, 0.2, 0.3, 0.4])
     for ax in fig.get_axes():
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    return fig
+    dirHome = os.path.expanduser('~')
+    fileFigGri = os.path.join(dirHome, 'Desktop/photoParallaxGri.png')
+    fileFigRiz = os.path.join(dirHome, 'Desktop/photoParallaxRiz.png')
+    fileFig = os.path.join(dirHome, 'Desktop/photoParallax.png')
+    figGri.savefig(fileFigGri, dpi=120, bbox_inches='tight')
+    figRiz.savefig(fileFigRiz, dpi=120, bbox_inches='tight')
+    fig.savefig(fileFig, dpi=120, bbox_inches='tight')
+    return figGri, figRiz, fig
 
 def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
     grHsc = gHsc - rHsc
@@ -796,6 +822,39 @@ def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=No
     fig.suptitle(title)
     return fig
 
+def makeTomPlotsProd(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=None, YProbRiz=None,
+                     title='Pure Morphology Classifier', limDkpc=(0.0, 80.0)):
+    if withProb:
+        assert YProbGri is not None
+        assert YProbRiz is not None
+    fig = plt.figure(figsize=(16, 12), dpi=120)
+    axMagAbs = fig.add_subplot(2, 2, 1)
+    axMagAbs.scatter(dKpc, magRAbsHsc, marker='.', s=1)
+    axMagAbs.set_xlim(limDkpc)
+    axMagAbs.set_ylim((3.0, 7.5))
+    axMagAbs.set_xlabel('d (kpc)')
+    axMagAbs.set_ylabel('Absolute Magnitude HSC-R')
+    axMag = fig.add_subplot(2, 2, 2)
+    axMag.scatter(dKpc, magRHsc, marker='.', s=1)
+    axMag.set_xlim(limDkpc)
+    axMag.set_ylim((19.0, 24.5))
+    axMag.set_xlabel('d (kpc)')
+    axMag.set_ylabel('Apparent Magnitude HSC-R')
+    axRi = fig.add_subplot(2, 2, 3)
+    axRi.scatter(dKpc, X[:,1], marker='.', s=1)
+    axRi.set_xlim(limDkpc)
+    axRi.set_ylim((-0.1, 0.4))
+    axRi.set_xlabel('d (kpc)')
+    axRi.set_ylabel('r-i')
+    axIz = fig.add_subplot(2, 2, 4)
+    axIz.scatter(dKpc, X[:,2], marker='.', s=1)
+    axIz.set_xlim(limDkpc)
+    axIz.set_ylim((-0.1, 0.2))
+    axIz.set_xlabel('d (kpc)')
+    axIz.set_ylabel('i-z')
+    fig.suptitle(title)
+    return fig
+
 def truthStarsTom(frac=None, cutRedGr=1.2, cutRedRi=0.7):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -838,7 +897,7 @@ def boxStarsTom(cutRedGr=1.2, cutRedRi=0.7):
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
-def colExtStarsTom(trainClfs=False, cutRedGr=1.2, cutRedRi=0.7):
+def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l=236.81366468, fontSize=18):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
@@ -897,16 +956,33 @@ def colExtStarsTom(trainClfs=False, cutRedGr=1.2, cutRedRi=0.7):
         YProbGri[magCut] = clfMarginalGri.predict_proba(X[magCut][:, [0, 1]], XErr[magCut][:, rowsV, colsV])
         rowsV, colsV = np.meshgrid([1, 2], [1, 2], indexing='ij')
         YProbRiz[magCut] = clfMarginalRiz.predict_proba(X[magCut][:, [1, 2]], XErr[magCut][:, rowsV, colsV])
-    good = np.logical_and(YProb > 0.8, mags < 25.0)
-    good = np.logical_and(np.logical_and(good, X[:,0] < cutRedGr), X[:,1] < cutRedRi)
+    good = np.logical_and(YProb > 0.8, mags < 24.0)
+    good = np.logical_and(np.logical_and(good, X[:,1] < cutRedRi), X[:,2] < cutRedIz)
     mags = trainSet.getTestMags()
     magRAbsHsc, dKpc = getParallax(mags[good,0], mags[good,1], mags[good,2], mags[good,3])
+    b = np.radians(b)
+    l = np.radians(l)
+    dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+    sinBStar = dKpc*np.sin(b)/dKpcGal
+    cosBStar = np.sqrt(1.0 - sinBStar**2)
+    RStar = dKpcGal*cosBStar
+    ZStar = dKpcGal*sinBStar
     exts = exts[testIdxs][good]
     mags = mags[good]
     X = X[good]
-    fig = makeTomPlots(dKpc, exts, magRAbsHsc, X, mags[:,1], withProb=True,
-                       YProbGri=YProbGri[good], YProbRiz=YProbRiz[good],
-                       title='Morphology+Colors')
+    fig = makeTomPlotsProd(dKpcGal, exts, magRAbsHsc, X, mags[:,1], withProb=True,
+                           YProbGri=YProbGri[good], YProbRiz=YProbRiz[good],
+                           title='Morphology+Colors')
+    figStruct = plt.figure()
+    ax = figStruct.add_subplot(1, 1, 1)
+    ax.scatter(RStar, ZStar, marker='.', s=5, color='black')
+    ax.set_xlabel('R (kpc)', fontsize=fontSize)
+    ax.set_ylabel('Z (kpc)', fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(16)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(16)
     dirHome = os.path.expanduser('~')
     fileFig = os.path.join(dirHome, 'Desktop/colExtStars.png')
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
