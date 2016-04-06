@@ -823,7 +823,7 @@ def makeTomPlots(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=No
     return fig
 
 def makeTomPlotsProd(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGri=None, YProbRiz=None,
-                     title='Pure Morphology Classifier', limDkpc=(0.0, 80.0)):
+                     title='Pure Morphology Classifier', limDkpc=(8.0, 80.0)):
     if withProb:
         assert YProbGri is not None
         assert YProbRiz is not None
@@ -852,7 +852,7 @@ def makeTomPlotsProd(dKpc, exts, magRAbsHsc, X, magRHsc, withProb=False, YProbGr
     axIz.set_ylim((-0.1, 0.2))
     axIz.set_xlabel('d (kpc)')
     axIz.set_ylabel('i-z')
-    fig.suptitle(title)
+    #fig.suptitle(title)
     return fig
 
 def truthStarsTom(frac=None, cutRedGr=1.2, cutRedRi=0.7):
@@ -901,25 +901,10 @@ def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
-    idxBest = np.argmax(trainSet.snrs, axis=1)
-    idxArr = np.arange(len(trainSet.snrs))
-    mags = trainSet.mags[idxArr, idxBest]
-    exts = trainSet.exts[idxArr, idxBest]
-    extsErr = 1.0/trainSet.snrs[idxArr, idxBest]
     if trainClfs:
         gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
-        XSub, XErrSub, Y = trainSet.getTrainSet(standardized=False)
-        trainIdxs = trainSet.trainIndexes
-        X = np.concatenate((XSub, exts[trainIdxs][:, None]), axis=1)
-        covShapeSub = XErrSub.shape
-        dimSub = covShapeSub[1]
-        assert dimSub == covShapeSub[2]
-        covShape = (covShapeSub[0], dimSub+1, dimSub+1)
-        XErr = np.zeros(covShape)
-        xxSub, yySub = np.meshgrid(np.arange(dimSub), np.arange(dimSub), indexing='ij')
-        XErr[:, xxSub, yySub] = XErrSub
-        XErr[:, dimSub, dimSub] = extsErr[trainIdxs]
-        mags = mags[trainIdxs]
+        X, XErr, Y = trainSet.genColExtTrainSet(mode='train')
+        mags = trainSet.getTrainMags(band='i')
         clfs = []
         for i, magBin in enumerate(magBins):
             good = np.logical_and(magBin[0] < mags, mags < magBin[1])
@@ -932,18 +917,11 @@ def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l
     else:
         with open('clfsColsExt.pkl', 'rb') as f:
             clfs = pickle.load(f)
-    XSub, XErrSub, Y = trainSet.getTestSet(standardized=False)
-    testIdxs = trainSet.testIndexes
-    mags = mags[testIdxs]
-    X = np.concatenate((XSub, exts[testIdxs][:, None]), axis=1)
-    covShapeSub = XErrSub.shape
-    dimSub = covShapeSub[1]
-    assert dimSub == covShapeSub[2]
-    covShape = (covShapeSub[0], dimSub+1, dimSub+1)
-    XErr = np.zeros(covShape)
-    xxSub, yySub = np.meshgrid(np.arange(dimSub), np.arange(dimSub), indexing='ij')
-    XErr[:, xxSub, yySub] = XErrSub
-    XErr[:, dimSub, dimSub] = extsErr[testIdxs]
+    X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
+    mags = trainSet.getAllMags(band='i')
+    exts = trainSet.getAllExts(band='i')
+    clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+    posteriors = clfXd.predict_proba(X, XErr, mags)
     YProb = np.zeros(Y.shape)
     YProbGri = np.zeros(Y.shape)
     YProbRiz = np.zeros(Y.shape)
@@ -958,7 +936,7 @@ def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l
         YProbRiz[magCut] = clfMarginalRiz.predict_proba(X[magCut][:, [1, 2]], XErr[magCut][:, rowsV, colsV])
     good = np.logical_and(YProb > 0.8, mags < 24.0)
     good = np.logical_and(np.logical_and(good, X[:,1] < cutRedRi), X[:,2] < cutRedIz)
-    mags = trainSet.getTestMags()
+    mags = trainSet.getAllMags()
     magRAbsHsc, dKpc = getParallax(mags[good,0], mags[good,1], mags[good,2], mags[good,3])
     b = np.radians(b)
     l = np.radians(l)
@@ -967,22 +945,22 @@ def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l
     cosBStar = np.sqrt(1.0 - sinBStar**2)
     RStar = dKpcGal*cosBStar
     ZStar = dKpcGal*sinBStar
-    exts = exts[testIdxs][good]
+    exts = exts[good]
     mags = mags[good]
     X = X[good]
     fig = makeTomPlotsProd(dKpcGal, exts, magRAbsHsc, X, mags[:,1], withProb=True,
                            YProbGri=YProbGri[good], YProbRiz=YProbRiz[good],
                            title='Morphology+Colors')
-    figStruct = plt.figure()
-    ax = figStruct.add_subplot(1, 1, 1)
-    ax.scatter(RStar, ZStar, marker='.', s=5, color='black')
-    ax.set_xlabel('R (kpc)', fontsize=fontSize)
-    ax.set_ylabel('Z (kpc)', fontsize=fontSize)
-    for ax in fig.get_axes():
-        for tick in ax.xaxis.get_major_ticks():
-            tick.label.set_fontsize(16)
-        for tick in ax.yaxis.get_major_ticks():
-            tick.label.set_fontsize(16)
+    #figStruct = plt.figure()
+    #ax = figStruct.add_subplot(1, 1, 1)
+    #ax.scatter(RStar, ZStar, marker='.', s=5, color='black')
+    #ax.set_xlabel('R (kpc)', fontsize=fontSize)
+    #ax.set_ylabel('Z (kpc)', fontsize=fontSize)
+    #for ax in fig.get_axes():
+    #    for tick in ax.xaxis.get_major_ticks():
+    #        tick.label.set_fontsize(16)
+    #    for tick in ax.yaxis.get_major_ticks():
+    #        tick.label.set_fontsize(16)
     dirHome = os.path.expanduser('~')
     fileFig = os.path.join(dirHome, 'Desktop/colExtStars.png')
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
