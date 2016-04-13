@@ -1450,6 +1450,7 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
             clf.fit(X[good], XErr[good], Y[good])
             clfs.append(clf)
+        print "Finished training, dumping resutls in clsColsExt.pkl"
         with open('clfsColsExt.pkl', 'wb') as f:
             pickle.dump(clfs, f)
     else:

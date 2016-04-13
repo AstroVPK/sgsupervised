@@ -19,9 +19,12 @@ kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-2.8, 'gal
               }
 
 def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
-    flux = cat.get('cmodel.flux.'+band)
-    fluxZero = cat.get('flux.zeromag.'+band)
-    mag = -2.5*np.log10(flux/fluxZero)
+    try:
+        flux = cat.get('cmodel.flux.'+band)
+        fluxZero = cat.get('flux.zeromag.'+band)
+        mag = -2.5*np.log10(flux/fluxZero)
+    except KeyError:
+        mag = cat.get(band+'mag')
     noMeas = np.logical_not(np.isfinite(mag))
     magAuto = cat.get('mag.auto')
     try:
@@ -37,32 +40,50 @@ def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, l
 
 def getGoodStats(cat, bands=['g', 'r', 'i', 'z', 'y']):
     if 'g' in bands:
-        hasPhotG = np.isfinite(cat.get('cmodel.flux.g'))
+        try:
+            hasPhotG = np.isfinite(cat.get('cmodel.flux.g'))
+        except KeyError:
+            hasPhotG = np.isfinite(cat.get('gmag'))
     else:
         hasPhotG = np.zeros(len(cat), dtype=bool)
     if 'r' in bands:
-        hasPhotR = np.isfinite(cat.get('cmodel.flux.r'))
+        try:
+            hasPhotR = np.isfinite(cat.get('cmodel.flux.r'))
+        except:
+            hasPhotR = np.isfinite(cat.get('rmag'))
     else:
         hasPhotR = np.zeros(len(cat), dtype=bool)
     if 'i' in bands:
-        hasPhotI = np.isfinite(cat.get('cmodel.flux.i'))
+        try:
+            hasPhotI = np.isfinite(cat.get('cmodel.flux.i'))
+        except KeyError:
+            hasPhotI = np.isfinite(cat.get('imag'))
     else:
         hasPhotI = np.zeros(len(cat), dtype=bool)
     if 'z' in bands:
-        hasPhotZ = np.isfinite(cat.get('cmodel.flux.z'))
+        try:
+            hasPhotZ = np.isfinite(cat.get('cmodel.flux.z'))
+        except KeyError:
+            hasPhotZ = np.isfinite(cat.get('zmag'))
     else:
         hasPhotZ = np.zeros(len(cat), dtype=bool)
     if 'y' in bands:
-        hasPhotY = np.isfinite(cat.get('cmodel.flux.y'))
+        try:
+            hasPhotY = np.isfinite(cat.get('cmodel.flux.y'))
+        except KeyError:
+            hasPhotY = np.isfinite(cat.get('ymag'))
     else:
         hasPhotY = np.zeros(len(cat), dtype=bool)
     hasPhotAny = np.logical_or(np.logical_or(np.logical_or(hasPhotG, hasPhotR), np.logical_or(hasPhotI, hasPhotZ)), hasPhotY)
     print "I removed {0} objects that don't have photometry in any band".format(len(hasPhotAny) - np.sum(hasPhotAny))
     good = hasPhotAny
     for band in bands:
-        flux = cat.get('cmodel.flux.'+band)
-        fluxPsf = cat.get('flux.psf.'+band)
-        ext = -2.5*np.log10(fluxPsf/flux)
+        try:
+            flux = cat.get('cmodel.flux.'+band)
+            fluxPsf = cat.get('flux.psf.'+band)
+            ext = -2.5*np.log10(fluxPsf/flux)
+        except KeyError:
+            ext = cat.get(band+'ext')
         noExtExt = np.logical_and(good, ext < 5.0)
         print "I removed {0} objects with extreme extendedness in {1}".format(np.sum(good)-np.sum(noExtExt), band)
         good = noExtExt
@@ -92,31 +113,46 @@ def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True):
     return getGoodStats(cat, bands=band)
 
 def getId(cat, band='i'):
-    return cat.get('multId.'+band)
+    if band == 'fromDB':
+        return cat.get('id.2')
+    else:
+        return cat.get('multId.'+band)
 
 def getRa(cat, band='i'):
-    return cat.get('coord.'+ band + '.ra')
+    if band == 'fromDB':
+        return cat.get('coord.ra')
+    else:
+        return cat.get('coord.'+ band + '.ra')
 
 def getDec(cat, band='i'):
-    return cat.get('coord.'+ band + '.dec')
+    if band == 'fromDB':
+        return cat.get('coord.dec')
+    else:
+        return cat.get('coord.'+ band + '.dec')
 
 def getSeeing(cat, band='i'):
     return cat.get('seeing.'+ band)
 
 def getMag(cat, band='i'):
-    f = cat.get('cmodel.flux.'+band)
-    f0 = cat.get('flux.zeromag.'+band)
-    mag = -2.5*np.log10(f/f0)
+    try:
+        f = cat.get('cmodel.flux.'+band)
+        f0 = cat.get('flux.zeromag.'+band)
+        mag = -2.5*np.log10(f/f0)
+    except KeyError:
+        mag = cat.get(band+'mag')
     return mag
 
 def getMagErr(cat, band='i'):
-    f = cat.get('cmodel.flux.'+band)
-    fErr = cat.get('cmodel.flux.err.'+band)
-    f0 = cat.get('flux.zeromag.'+band)
-    f0Err = cat.get('flux.zeromag.err.'+band)
-    rat = f/f0
-    ratErr = np.sqrt(np.square(fErr) + np.square(f*f0Err/f0))/f0
-    magErr = 2.5/np.log(10.0)*ratErr/rat
+    try:
+        f = cat.get('cmodel.flux.'+band)
+        fErr = cat.get('cmodel.flux.err.'+band)
+        f0 = cat.get('flux.zeromag.'+band)
+        f0Err = cat.get('flux.zeromag.err.'+band)
+        rat = f/f0
+        ratErr = np.sqrt(np.square(fErr) + np.square(f*f0Err/f0))/f0
+        magErr = 2.5/np.log(10.0)*ratErr/rat
+    except KeyError:
+        magErr = cat.get(band+'mag.cmodel.err')
     return magErr
 
 def getMagPsf(cat, band='i'):
@@ -136,9 +172,12 @@ def getMagPsfErr(cat, band='i'):
     return magErr
 
 def getExt(cat, band='i'):
-    f = cat.get('cmodel.flux.'+band)
-    fP = cat.get('flux.psf.'+band)
-    ext = -2.5*np.log10(fP/f)
+    try:
+        f = cat.get('cmodel.flux.'+band)
+        fP = cat.get('flux.psf.'+band)
+        ext = -2.5*np.log10(fP/f)
+    except KeyError:
+        ext = cat.get(band+'ext')
     return ext
 
 def getExtErr(cat, band='i', corr=0.3):
@@ -177,15 +216,21 @@ def getExtHsmDeconvLinear(cat, band='i'):
     return ext
 
 def getSnr(cat, band='i'):
-    f = cat.get('cmodel.flux.'+band)
-    fErr = cat.get('cmodel.flux.err.'+band)
-    snr = f/fErr
+    try:
+        f = cat.get('cmodel.flux.'+band)
+        fErr = cat.get('cmodel.flux.err.'+band)
+        snr = f/fErr
+    except KeyError:
+        snr = 2.5/np.log(10.0)/cat.get(band+'mag.cmodel.err')
     return snr
     
 def getSnrPsf(cat, band='i'):
-    f = cat.get('flux.psf.'+band)
-    fErr = cat.get('flux.psf.err.'+band)
-    snr = f/fErr
+    try:
+        f = cat.get('flux.psf.'+band)
+        fErr = cat.get('flux.psf.err.'+band)
+        snr = f/fErr
+    except KeyError:
+        snr = 2.5/np.log(10.0)/cat.get(band+'mag.psf.err')
     return snr
 
 def getSnrAp(cat, band='i'):
@@ -688,11 +733,13 @@ class TrainingSet(object):
         return fig
 
 def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='mag', extsType='ext', concatBands=True,
-              onlyFinite=True, polyOrder=1, withErr=False, snrType='snrPsf'):
+              onlyFinite=True, polyOrder=1, withErr=False, snrType='snr', fromDB=False):
     """
     Load `inputs` from `cat` into `X` and   `output` to `Y`. If onlyFinite is True, then
     throw away all rows with one or more non-finite entries.
     """
+    if fromDB and concatBands:
+        raise RuntimeError("Can't concatenate bands when data is coming from the database.")
     if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         try:
@@ -701,7 +748,7 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
             cat = afwTable.SimpleCatalog.readFits(cat)
     nRecords = len(cat); nBands = len(bands); nInputs = len(inputs)
     if concatBands:
-        ids = np.zeros((nRecords*len(bands),), dtype=int)
+        ids = np.zeros((nRecords*len(bands),), dtype=long)
         ras = np.zeros((nRecords*len(bands),))
         decs = np.zeros((nRecords*len(bands),))
         X = np.zeros((nRecords*len(bands), len(inputs)))
@@ -726,25 +773,35 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
             snrs[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName=snrType, band=band)
             seeings[i*nRecords:(i+1)*nRecords] = getInput(cat, inputName='seeing', band=band)
     else:
-        ids = np.zeros((nRecords, len(bands)), dtype=int)
-        ras = np.zeros((nRecords, len(bands)))
-        decs = np.zeros((nRecords, len(bands)))
+        if fromDB:
+            ids = np.zeros((nRecords,), dtype=long)
+            ras = np.zeros((nRecords,))
+            decs = np.zeros((nRecords,))
+        else:
+            ids = np.zeros((nRecords, len(bands)), dtype=long)
+            ras = np.zeros((nRecords, len(bands)))
+            decs = np.zeros((nRecords, len(bands)))
+            seeings = np.zeros((nRecords, len(bands)))
         X = np.zeros((nRecords, len(inputs)*len(bands)))
         Y = np.zeros((nRecords,), dtype=bool)
         mags = np.zeros((nRecords, len(bands)))
         exts = np.zeros((nRecords, len(bands)))
         snrs = np.zeros((nRecords, len(bands)))
-        seeings = np.zeros((nRecords, len(bands)))
         if withErr:
             XErr = np.zeros((nRecords, len(inputs)*len(bands)))
+        if fromDB:
+            ids[:] = getInput(cat, inputName='id', band='fromDB')
+            ras[:] = getInput(cat, inputName='ra', band='fromDB')
+            decs[:] = getInput(cat, inputName='dec', band='fromDB')
         for i, band in enumerate(bands):
-            ids[:, i] = getInput(cat, inputName='id', band=band)
-            ras[:, i] = getInput(cat, inputName='ra', band=band)
-            decs[:, i] = getInput(cat, inputName='dec', band=band)
+            if not fromDB:
+                ids[:, i] = getInput(cat, inputName='id', band=band)
+                ras[:, i] = getInput(cat, inputName='ra', band=band)
+                decs[:, i] = getInput(cat, inputName='dec', band=band)
+                seeings[:, i] = getInput(cat, inputName='seeing', band=band)
             mags[:, i] = getInput(cat, inputName=magsType, band=band)
             exts[:, i] = getInput(cat, inputName=extsType, band=band)
             snrs[:, i] = getInput(cat, inputName=snrType, band=band)
-            seeings[:, i] = getInput(cat, inputName='seeing', band=band)
             for j, inputName in enumerate(inputs):
                 X[:, i*nInputs + j] = getInput(cat, inputName=inputName, band=band)
                 if withErr:
@@ -764,16 +821,25 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
             good = np.logical_and(good, np.isfinite(X[:,i]))
             if withErr:
                 good = np.logical_and(good, np.isfinite(XErr[:,i]))
+            good = np.logical_and(good, np.isfinite(snrs[:,i]))
     ids = ids[good]; ras = ras[good]; decs = decs[good]; X = X[good]; Y = Y[good]; mags = mags[good]; exts = exts[good];
-    snrs = snrs[good]; seeings = seeings[good]
+    snrs = snrs[good]; 
+    if not fromDB:
+        seeings = seeings[good]
     if withErr:
         XErr = XErr[good]
     if polyOrder > 1:
         X = sgsvm.phiPol(X, polyOrder)
     if withErr:
-        return X, XErr, Y, ids, ras, decs, mags, exts, snrs, seeings
+        if not fromDB:
+            return X, XErr, Y, ids, ras, decs, mags, exts, snrs, seeings
+        else:
+            return X, XErr, Y, ids, ras, decs, mags, exts, snrs
     else:
-        return X, Y, ids, ras, decs, mags, exts, snrs, seeings
+        if not fromDB:
+            return X, Y, ids, ras, decs, mags, exts, snrs, seeings
+        else:
+            return X, Y, ids, ras, decs, mags, exts, snrs
 
 def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
     if not 'withErr' in kargs:
@@ -782,8 +848,13 @@ def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
     if mode in ['colors', 'rats'] and not kargs['withErr']:
         raise ValueError('You are forced to pull out errors for mode {0}, set keyword `withErr` to True'.format(mode))
 
+    if 'fromDB' in kargs:
+        fromDB = kargs['fromDB']
     if kargs['withErr'] == True:
-        X, XErr, Y, ids, ras, decs, mags, exts, snrs, seeings = _extractXY(cat, **kargs)
+        if fromDB:
+            X, XErr, Y, ids, ras, decs, mags, exts, snrs = _extractXY(cat, **kargs)
+        else:
+            X, XErr, Y, ids, ras, decs, mags, exts, snrs, seeings = _extractXY(cat, **kargs)
     else:
         X, Y, ids, ras, decs, mags, exts, snrs, seeings = _extractXY(cat, **kargs)
 
@@ -866,12 +937,20 @@ def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
 
         names = cNames
         if mode == 'colors':
-            trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                   snrs=snrs, seeings=seeings, bands=bands, names=names, polyOrder=polyOrder)
+            if fromDB:
+                trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
+                                       snrs=snrs, bands=bands, names=names, polyOrder=polyOrder)
+            else:
+                trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
+                                       snrs=snrs, seeings=seeings, bands=bands, names=names, polyOrder=polyOrder)
         elif mode == 'colshape':
             names.append('ext_'+extBand)
-            trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                   snrs=snrs, seeings=seeings, bands=bands, names=names, polyOrder=polyOrder)
+            if fromDB:
+                trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
+                                       snrs=snrs, bands=bands, names=names, polyOrder=polyOrder)
+            else:
+                trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
+                                       snrs=snrs, seeings=seeings, bands=bands, names=names, polyOrder=polyOrder)
     else:
         raise ValueError("Mode {0} not implemented".format(mode))
 
