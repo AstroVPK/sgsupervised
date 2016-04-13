@@ -897,7 +897,8 @@ def boxStarsTom(cutRedGr=1.2, cutRedRi=0.7):
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
-def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l=236.81366468, fontSize=18):
+def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l=236.81366468, 
+                   fontSize=18, computePosteriors=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
@@ -921,19 +922,25 @@ def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l
     mags = trainSet.getAllMags(band='i')
     exts = trainSet.getAllExts(band='i')
     clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
-    posteriors = clfXd.predict_proba(X, XErr, mags)
-    YProb = np.zeros(Y.shape)
-    YProbGri = np.zeros(Y.shape)
-    YProbRiz = np.zeros(Y.shape)
-    for i, magBin in enumerate(magBins):
-        clfMarginalGri = clfs[i].getMarginalClf(cols=[0, 1])
-        clfMarginalRiz = clfs[i].getMarginalClf(cols=[1, 2])
-        magCut = np.logical_and(magBin[0] < mags, mags < magBin[1])
-        YProb[magCut] = clfs[i].predict_proba(X[magCut], XErr[magCut])
-        rowsV, colsV = np.meshgrid([0, 1], [0, 1], indexing='ij')
-        YProbGri[magCut] = clfMarginalGri.predict_proba(X[magCut][:, [0, 1]], XErr[magCut][:, rowsV, colsV])
-        rowsV, colsV = np.meshgrid([1, 2], [1, 2], indexing='ij')
-        YProbRiz[magCut] = clfMarginalRiz.predict_proba(X[magCut][:, [1, 2]], XErr[magCut][:, rowsV, colsV])
+    #posteriors = clfXd.predict_proba(X, XErr, mags)
+    if computePosteriors:
+        YProb = np.zeros(Y.shape)
+        YProbGri = np.zeros(Y.shape)
+        YProbRiz = np.zeros(Y.shape)
+        for i, magBin in enumerate(magBins):
+            clfMarginalGri = clfs[i].getMarginalClf(cols=[0, 1])
+            clfMarginalRiz = clfs[i].getMarginalClf(cols=[1, 2])
+            magCut = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            YProb[magCut] = clfs[i].predict_proba(X[magCut], XErr[magCut])
+            rowsV, colsV = np.meshgrid([0, 1], [0, 1], indexing='ij')
+            YProbGri[magCut] = clfMarginalGri.predict_proba(X[magCut][:, [0, 1]], XErr[magCut][:, rowsV, colsV])
+            rowsV, colsV = np.meshgrid([1, 2], [1, 2], indexing='ij')
+            YProbRiz[magCut] = clfMarginalRiz.predict_proba(X[magCut][:, [1, 2]], XErr[magCut][:, rowsV, colsV])
+        with open('cosmosTomPosteriors.pkl', 'wb') as f:
+            pickle.dump((YProb, YProbGri, YProbRiz), f)
+    else:
+        with open('cosmosTomPosteriors.pkl', 'rb') as f:
+            YProb, YProbGri, YProbRiz = pickle.load(f)
     good = np.logical_and(YProb > 0.8, mags < 24.0)
     good = np.logical_and(np.logical_and(good, X[:,1] < cutRedRi), X[:,2] < cutRedIz)
     mags = trainSet.getAllMags()
@@ -951,8 +958,19 @@ def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l
     fig = makeTomPlotsProd(dKpcGal, exts, magRAbsHsc, X, mags[:,1], withProb=True,
                            YProbGri=YProbGri[good], YProbRiz=YProbRiz[good],
                            title='Morphology+Colors')
-    #figStruct = plt.figure()
-    #ax = figStruct.add_subplot(1, 1, 1)
+    figStruct = plt.figure()
+    ax = figStruct.add_subplot(1, 1, 1)
+    magRAbsHscBins = [(4.5, 5.0), (5.0, 5.5), (5.5, 6.0), (6.0, 6.5), (6.5, 7.0)]
+    colors = ['blue', 'red', 'green', 'cyan', 'black']
+    for i, magAbsBin in enumerate(magRAbsHscBins):
+        magAbsCut = np.logical_and(magRAbsHsc > magAbsBin[0], magRAbsHsc < magAbsBin[1])
+        histData = dKpcGal[magAbsCut]
+        hist, bins = np.histogram(histData, bins=15, range=(20.0, 80.0))
+        binCenters = 0.5*(bins[:-1] + bins[1:])
+        hist = hist*1.0/binCenters**2
+        hist = hist*1.0/hist[0]
+        barWidth = binCenters[1] - binCenters[0]
+        ax.bar(bins[:-1], hist, barWidth, edgecolor=colors[i], fill=False)
     #ax.scatter(RStar, ZStar, marker='.', s=5, color='black')
     #ax.set_xlabel('R (kpc)', fontsize=fontSize)
     #ax.set_ylabel('Z (kpc)', fontsize=fontSize)
