@@ -1509,7 +1509,8 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    figPosts.savefig('/u/garmilla/Desktop/xdColExtPosts.png', dpi=120, bbox_inches='tight')
+    dirHome = os.path.expanduser('~')
+    figPosts.savefig(os.path.join(dirHome, 'Desktop/xdColExtPosts.png'), dpi=120, bbox_inches='tight')
     train = etl.Training(trainSet, clfXd)
     for i, cut in enumerate(cuts):
         if i == 0:
@@ -1520,7 +1521,7 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             figScores = train.plotScores(sType='test', fig=figScores, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle=style[i],
                                          legendLabel=r'P(Star)={0}'.format(cut), standardized=False, magRange=(18.5, 25.0),
                                          kargsPred={'threshold': cut}, colExt=True)
-    figScores.savefig('/u/garmilla/Desktop/xdColExtScores.png', dpi=120, bbox_inches='tight')
+    figScores.savefig(os.path.join(dirHome, 'Desktop/xdColExtScores.png'), dpi=120, bbox_inches='tight')
     figBias = plt.figure(figsize=(24, 18), dpi=120)
     magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
     colNames = ['g-r', 'r-i', 'i-z', 'z-y']
@@ -1546,7 +1547,7 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    figBias.savefig('/u/garmilla/Desktop/xdColExtBias.png', dpi=120, bbox_inches='tight')
+    figBias.savefig(os.path.join(dirHome, 'Desktop/xdColExtBias.png'), dpi=120, bbox_inches='tight')
 
 def xdColExtSvmScores(trainXd=False, trainSvm=False, fontSize=18):
     with open('trainSet.pkl', 'rb') as f:
