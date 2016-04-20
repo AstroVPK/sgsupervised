@@ -1,11 +1,17 @@
 import os
 import csv
+import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
+from astropy import units
+from astropy.coordinates import SkyCoord
+
+import dGauss
 
 _fields = ['XMM', 'GAMA09', 'WIDE12H', 'GAMA15', 'HectoMap', 'VVDS', 'AEGIS']
 _bands = ['g', 'r', 'i', 'z', 'y']
+_colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
 
 def fileLen(fName):
     with open(fName) as f:
@@ -88,6 +94,7 @@ def loadFieldData(field, subsetSize=None):
             cList = readerData.next() # Columns
             cList[0] = cList[0][2:] # Remove number sign and space
             readerPost.next() # Synchronyze readers
+            raList = []; decList = []
             XList = []; XErrList = []; magIList = []; YList = []
             for line in readerData:
                 posterior = float(readerPost.next()[0])
@@ -100,19 +107,163 @@ def loadFieldData(field, subsetSize=None):
                         XErrList.append(XErr[0])
                         magIList.append(magI[0])
                         YList.append(posterior)
+                        raList.append(float(line[cList.index('ra2000')]))
+                        decList.append(float(line[cList.index('decl2000')]))
                     except ValueError:
                         continue
                 else:
                     continue
+    ra = np.array(raList)
+    dec = np.array(decList)
     X = np.array(XList)
     XErr = np.array(XErrList)
     magI = np.array(magIList)
     Y = np.array(YList)
-    return X, XErr, magI, Y
+    return ra, dec, X, XErr, magI, Y
+
+cgr = (-0.00816446, -0.08366937, -0.00726883)
+cri = (0.00231810,  0.01284177, -0.03068248)
+ciz = (0.00130204, -0.16922042, -0.01374245)
+czi = (-0.00680620,  0.01353969,  0.01479369)
+Aiz = ciz[2] - czi[2] 
+Biz = 1.0 + ciz[1] + czi[1]
+Ari = cri[2]
+Bri = 1.0 + cri[1]
+Agr = cgr[2]
+Bgr = 1.0 + cgr[1]
+
+def _fromHscToSdss(grHsc, riHsc, izHsc, giveClosest=True):
+    Ciz = ciz[0] - czi[0] - izHsc
+    izSdss1 = (-Biz + np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
+    izSdss2 = (-Biz - np.sqrt(Biz**2-4*Aiz*Ciz))/2/Aiz
+    Cri1 = cri[0] - ciz[0] - ciz[1]*izSdss1 - ciz[2]*izSdss1**2 - riHsc
+    Cri2 = cri[0] - ciz[0] - ciz[1]*izSdss2 - ciz[2]*izSdss2**2 - riHsc
+    riSdss1 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri1))/2/Ari
+    riSdss2 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri1))/2/Ari
+    riSdss3 = (-Bri + np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
+    riSdss4 = (-Bri - np.sqrt(Bri**2-4*Ari*Cri2))/2/Ari
+    riStack = np.vstack((riSdss1, riSdss2, riSdss3, riSdss4))
+    izStack = np.vstack((izSdss1, izSdss1, izSdss2, izSdss2))
+    d1 = np.square(riSdss1 - riHsc) + np.square(izSdss1 - izHsc)
+    d2 = np.square(riSdss2 - riHsc) + np.square(izSdss1 - izHsc)
+    d3 = np.square(riSdss3 - riHsc) + np.square(izSdss2 - izHsc)
+    d4 = np.square(riSdss4 - riHsc) + np.square(izSdss2 - izHsc)
+    dStack = np.vstack((d1, d2, d3, d4))
+    idxMinD = np.argmin(dStack, axis=0)
+    idxArange = np.arange(len(riHsc))
+    riSdss = riStack[idxMinD, idxArange]
+    izSdss = izStack[idxMinD, idxArange]
+    Cgr = cgr[0] - cri[0] - cri[1]*riSdss - cri[2]*riSdss1**2 - grHsc
+    grSdss1 = (-Bgr + np.sqrt(Bgr**2 - 4*Agr*Cgr))/2/Agr
+    grSdss2 = (-Bgr - np.sqrt(Bgr**2 - 4*Agr*Cgr))/2/Agr
+    grStack = np.vstack((grSdss1, grSdss2))
+    d1 = np.square(grSdss1 - grHsc)
+    d2 = np.square(grSdss2 - grHsc)
+    dStack = np.vstack((d1, d2))
+    idxMinD = np.argmin(dStack, axis=0)
+    grSdss = grStack[idxMinD, idxArange]
+    return grSdss, riSdss, izSdss
+
+def _getPColors(g, r, i):
+    P1 = np.zeros(g.shape)
+    P2 = np.zeros(g.shape)
+    As = np.zeros((g.shape[0], 3, 3))
+    Bs = np.zeros((g.shape[0], 3))
+    isW = np.zeros(g.shape, dtype=bool)
+    P1w = 0.928*g - 0.556*r - 0.372*i - 0.425
+    P2w = -0.227*g + 0.792*r -0.567*i + 0.050
+    isInW = np.logical_and(P1w > -0.2, P1w < 0.6)
+    P1[isInW] = P1w[isInW]
+    P2[isInW] = P2w[isInW]
+    isW[isInW] = True
+    P1x = r - i
+    P2x = 0.707*g - 0.707*r - 0.988
+    isInX = np.logical_and(P1x > 0.8, P1x < 1.6)
+    P1[isInX] = P1x[isInX]
+    P2[isInX] = P2x[isInX]
+    isW[isInX] = False
+    if np.any(np.logical_and(isInW, isInX)):
+        both = np.logical_and(isInW, isInX)
+        bothW = np.logical_and(both, P2w**2 < P2x**2)
+        P1[bothW] = P1w[bothW]
+        P2[bothW] = P2w[bothW]
+        isW[bothW] = True
+    if np.any(np.logical_and(np.logical_not(isInW), np.logical_not(isInX))):
+        isInNan = np.logical_and(np.logical_not(isInW), np.logical_not(isInX))
+        isInNanW = np.logical_and(isInNan, P2w**2 < P2x**2)
+        isInNanX = np.logical_and(isInNan, P2x**2 <= P2w**2)
+        P1[isInNanW] = P1w[isInNanW]
+        P2[isInNanW] = P2w[isInNanW]
+        isW[isInNanW] = True
+        P1[isInNanX] = P1x[isInNanX]
+        P2[isInNanX] = P2x[isInNanX]
+        isW[isInNanX] = False
+        #isNotInNan = np.logical_not(isInNan)
+        #plt.scatter(g[isNotInNan] - i[isNotInNan], r[isNotInNan] - i[isNotInNan], marker='.', s=1, color='blue')
+        #plt.scatter(g[isInNan] - i[isInNan], r[isInNan] - i[isInNan], marker='.', s=1, color='red')
+        #plt.show()
+        #P1[isInNan] = np.nan
+        #P2[isInNan] = np.nan
+        #raise ValueError("I've found an object that is no regime!")
+    isX = np.logical_not(isW)
+    As[isW] = np.array([[0.928, -0.556, -0.372], 
+                        [-0.227, 0.792, -0.567], 
+                        [0.0, 0.0, 1.0]])
+    Bs[isW, 0] = P1[isW] + 0.425; Bs[isW, 1] = 0.0 - 0.050; Bs[isW, 2] = i[isW] 
+    As[isX] = np.array([[0.0, 1.0, -1.0], 
+                        [0.707, -0.707, 0.0], 
+                        [0.0, 0.0, 1.0]])
+    Bs[isX, 0] = P1[isX]; Bs[isX, 1] = 0.0 + 0.988; Bs[isX, 2] = i[isX] 
+    gris = np.linalg.solve(As, Bs)
+    grProj = gris[:,0] - gris[:,1]
+    riProj = gris[:,1] - gris[:,2]
+    return P1, P2, grProj, riProj
+
+def _getAbsoluteMagR(riSdss):
+    return 4.0 + 11.86*riSdss - 10.74*riSdss**2 + 5.99*riSdss**3 - 1.20*riSdss**4
+
+def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
+    grHsc = gHsc - rHsc
+    riHsc = rHsc - iHsc
+    izHsc = iHsc - zHsc
+    grSdss, riSdss, izSdss = _fromHscToSdss(grHsc, riHsc, izHsc)
+    gSdss = gHsc - cgr[0] - cgr[1]*grSdss - cgr[2]*grSdss**2
+    rSdss = rHsc - cri[0] - cri[1]*riSdss - cri[2]*riSdss**2
+    iSdss = iHsc - ciz[0] - ciz[1]*izSdss - ciz[2]*izSdss**2
+    zSdss = zHsc - czi[0] + czi[1]*izSdss - czi[2]*izSdss**2
+    if projected:
+        P1, P2, grProj, riProj = _getPColors(gSdss, rSdss, iSdss)
+        magRAbsSdss = _getAbsoluteMagR(riProj)
+        magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riProj + cri[2]*riProj**2
+    else:
+        riSdss = rSdss - iSdss
+        magRAbsSdss = _getAbsoluteMagR(riSdss)
+        magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
+    dKpc = np.power(10.0, (rHsc-magRAbsHsc)/5)/100
+    return magRAbsHsc, dKpc
+
+def makeFieldTomography(field, subsetSize=100000, threshold=0.9, fontSize=18):
+    ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    good = np.logical_and(Y >= 0.9, X[:,1] < 0.4)
+    good = np.logical_and(good, X[:,2] < 0.2)
+    good = np.logical_and(good, magI <= 24.0)
+    X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
+    magR = X[:,1] + magI
+    magG = X[:,0] + magR
+    magZ = -X[:,2] + magI
+    magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
+    fig = plt.figure(figsize=(8, 6), dpi=120)
+    ax = fig.add_subplot(2, 2, 1)
+    ax.scatter(dKpc, magRAbsHsc, marker='.', s=1, color='black')
+    ax = fig.add_subplot(2, 2, 2)
+    ax.scatter(dKpc, X[:,1], marker='.', s=1, color='black')
+    ax = fig.add_subplot(2, 2, 3)
+    ax.scatter(dKpc, magI, marker='.', s=1, color='black')
+    return fig
 
 def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0)]
-    X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
     colNames = ['g-r', 'r-i', 'i-z', 'z-y']
     colLims = [(0.0, 1.5), (-0.2, 2.0), (-0.2, 1.0), (-0.2, 0.4)]
@@ -141,6 +292,18 @@ def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
 
+def makeWideGallacticProjection(subsetSize=1000):
+    fig = plt.figure(dpi=120)
+    ax = fig.add_subplot(111, projection='mollweide')
+    for i, field in enumerate(_fields):
+        ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+        c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
+        b = c.galactic.b.rad
+        l = c.galactic.l.rad
+        ax.scatter(l, b, marker='.', s=1, color=_colors[i], edgecolor="none")
+    return fig
+    
 if __name__ == '__main__':
-    field = 'VVDS'
+    field = 'HectoMap'
     computeFieldPosteriors(field)
+    #makeCCDiagrams(field)
