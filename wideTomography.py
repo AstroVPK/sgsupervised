@@ -9,9 +9,11 @@ from astropy.coordinates import SkyCoord
 
 import dGauss
 
-_fields = ['XMM', 'GAMA09', 'WIDE12H', 'GAMA15', 'HectoMap', 'VVDS', 'AEGIS']
+#_fields = ['XMM', 'GAMA09', 'WIDE12H', 'GAMA15', 'HectoMap', 'VVDS', 'AEGIS']
+_fields = ['AEGIS']
 _bands = ['g', 'r', 'i', 'z', 'y']
-_colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
+#_colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
+_colors = ['black']
 
 def fileLen(fName):
     with open(fName) as f:
@@ -242,9 +244,9 @@ def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
     dKpc = np.power(10.0, (rHsc-magRAbsHsc)/5)/100
     return magRAbsHsc, dKpc
 
-def makeFieldTomography(field, subsetSize=100000, threshold=0.9, fontSize=18):
+def makeTomographyField(field, subsetSize=100000, threshold=0.9, fontSize=18):
     ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
-    good = np.logical_and(Y >= 0.9, X[:,1] < 0.4)
+    good = np.logical_and(Y >= threshold, X[:,1] < 0.4)
     good = np.logical_and(good, X[:,2] < 0.2)
     good = np.logical_and(good, magI <= 24.0)
     X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
@@ -259,6 +261,41 @@ def makeFieldTomography(field, subsetSize=100000, threshold=0.9, fontSize=18):
     ax.scatter(dKpc, X[:,1], marker='.', s=1, color='black')
     ax = fig.add_subplot(2, 2, 3)
     ax.scatter(dKpc, magI, marker='.', s=1, color='black')
+    return fig
+
+def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18):
+    width = (riMax - riMin)/nBins
+    binMin = riMin
+    fig = plt.figure(figsize=(24, 18), dpi=120)
+    for i in range(nBins):
+        ax = fig.add_subplot(3, 3, i+1)
+        binMax = binMin + width
+        counts = np.zeros((len(_fields), nBinsD))
+        binCenters = np.zeros((len(_fields), nBinsD))
+        for j, field in enumerate(_fields):
+            ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+            ri = X[:,1]
+            good = np.logical_and(ri > binMin, ri < binMax)
+            good = np.logical_and(good, magI <= 24.0)
+            good = np.logical_and(good, X[:,2] < 0.2)
+            good = np.logical_and(good, Y >= threshold)
+            ra = ra[good]; dec = dec[good]
+            X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
+            c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
+            b = c.galactic.b.rad
+            l = c.galactic.l.rad
+            magR = X[:,1] + magI
+            magG = X[:,0] + magR
+            magZ = -X[:,2] + magI
+            magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
+            dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+            dGrid = np.linspace(dKpcGal.min(), dKpcGal.max(), num=nBinsD+1)
+            for k in range(nBinsD):
+                binCenters[j][k] = 0.5*(dGrid[k] + dGrid[k+1])
+                inDBin = np.logical_and(dKpcGal > dGrid[k], dKpcGal < dGrid[k+1])
+                counts[j][k] = np.sum(inDBin)*1.0
+            ax.plot(binCenters[j], counts[j]/binCenters[j], color=_colors[j])
+        binMin += width
     return fig
 
 def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
@@ -292,15 +329,28 @@ def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
 
-def makeWideGallacticProjection(subsetSize=1000):
+def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(111, projection='mollweide')
+    ax.grid()
     for i, field in enumerate(_fields):
         ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
         c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
         b = c.galactic.b.rad
         l = c.galactic.l.rad
+        gtr = np.logical_and(True, l > np.pi)
+        l[gtr] = l[gtr] - 2*np.pi
         ax.scatter(l, b, marker='.', s=1, color=_colors[i], edgecolor="none")
+    ax.set_xlabel('l', fontsize=fontSize)
+    ax.set_ylabel('b', fontsize=fontSize)
+    ax.set_title('HSC Wide January 2016', fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    dirHome = os.path.expanduser('~')
+    fig.savefig(os.path.join(dirHome, 'Desktop/wideProjection.png'), dpi=120, bbox_inches='tight')
     return fig
     
 if __name__ == '__main__':
