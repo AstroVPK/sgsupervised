@@ -84,8 +84,13 @@ def computeFieldPosteriors(field):
                 fOutput.write('{0}\n'.format(pStar))
 
 def loadFieldData(field, subsetSize=None):
-    fNameData = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
-    fNamePost = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
+    try:
+        fNameData = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
+        fNamePost = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
+        fileLen(fNamePost) - 1
+    except IOError:
+        fNameData = '/home/jose/Data/wide{0}.csv'.format(field)
+        fNamePost = '/home/jose/Data/wide{0}Posteriors.csv'.format(field)
     if subsetSize is None:
         subsetSize = fileLen(fNamePost) - 1
     subset = selectFieldSubset(fNamePost, subsetSize)
@@ -267,35 +272,40 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
     width = (riMax - riMin)/nBins
     binMin = riMin
     fig = plt.figure(figsize=(24, 18), dpi=120)
+    axes = []
     for i in range(nBins):
-        ax = fig.add_subplot(3, 3, i+1)
-        binMax = binMin + width
-        counts = np.zeros((len(_fields), nBinsD))
-        binCenters = np.zeros((len(_fields), nBinsD))
-        for j, field in enumerate(_fields):
-            ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
-            ri = X[:,1]
+        axes.append(fig.add_subplot(3, 3, i+1))
+    for i, field in enumerate(_fields):
+        ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+        ri = X[:,1]
+        good = np.logical_and(True, magI <= 24.0)
+        good = np.logical_and(good, X[:,1] < 0.4)
+        good = np.logical_and(good, X[:,2] < 0.2)
+        good = np.logical_and(good, Y >= threshold)
+        ra = ra[good]; dec = dec[good]; ri = ri[good]
+        X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
+        c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
+        b = c.galactic.b.rad
+        l = c.galactic.l.rad
+        magR = X[:,1] + magI
+        magG = X[:,0] + magR
+        magZ = -X[:,2] + magI
+        magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
+        dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+        for j in range(nBins):
+            binMax = binMin + width
+            counts = np.zeros((nBinsD,))
+            binCenters = np.zeros((nBinsD,))
             good = np.logical_and(ri > binMin, ri < binMax)
-            good = np.logical_and(good, magI <= 24.0)
-            good = np.logical_and(good, X[:,2] < 0.2)
-            good = np.logical_and(good, Y >= threshold)
-            ra = ra[good]; dec = dec[good]
-            X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
-            c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
-            b = c.galactic.b.rad
-            l = c.galactic.l.rad
-            magR = X[:,1] + magI
-            magG = X[:,0] + magR
-            magZ = -X[:,2] + magI
-            magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
-            dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
-            dGrid = np.linspace(dKpcGal.min(), dKpcGal.max(), num=nBinsD+1)
+            dGrid = np.linspace(dKpcGal[good].min(), dKpcGal[good].max(), num=nBinsD+1)
             for k in range(nBinsD):
-                binCenters[j][k] = 0.5*(dGrid[k] + dGrid[k+1])
-                inDBin = np.logical_and(dKpcGal > dGrid[k], dKpcGal < dGrid[k+1])
-                counts[j][k] = np.sum(inDBin)*1.0
-            ax.plot(binCenters[j], counts[j]/binCenters[j], color=_colors[j])
-        binMin += width
+                binCenters[k] = 0.5*(dGrid[k] + dGrid[k+1])
+                inDBin = np.logical_and(dKpcGal[good] > dGrid[k], dKpcGal[good] < dGrid[k+1])
+                counts[k] = np.sum(inDBin)*1.0
+            axes[j].plot(binCenters, counts/binCenters, color=_colors[i])
+            binMin += width
+    dirHome = os.path.expanduser('~')
+    fig.savefig(os.path.join(dirHome, 'Desktop/wideTomography.png'), dpi=120, bbox_inches='tight')
     return fig
 
 def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
