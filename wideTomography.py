@@ -3,17 +3,19 @@ import csv
 import pickle
 
 import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 from astropy import units
 from astropy.coordinates import SkyCoord
 
 import dGauss
 
-#_fields = ['XMM', 'GAMA09', 'WIDE12H', 'GAMA15', 'HectoMap', 'VVDS', 'AEGIS']
-_fields = ['AEGIS']
+_fields = ['XMM', 'GAMA09', 'WIDE12H', 'GAMA15', 'HectoMap', 'VVDS', 'AEGIS']
+#_fields = ['AEGIS', 'HectoMap']
 _bands = ['g', 'r', 'i', 'z', 'y']
-#_colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
-_colors = ['black']
+_colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
+#_colors = ['black', 'magenta']
 
 def fileLen(fName):
     with open(fName) as f:
@@ -270,7 +272,6 @@ def makeTomographyField(field, subsetSize=100000, threshold=0.9, fontSize=18):
 
 def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18):
     width = (riMax - riMin)/nBins
-    binMin = riMin
     fig = plt.figure(figsize=(24, 18), dpi=120)
     axes = []
     for i in range(nBins):
@@ -292,12 +293,16 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
         magZ = -X[:,2] + magI
         magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
         dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+        binMin = riMin
         for j in range(nBins):
             binMax = binMin + width
             counts = np.zeros((nBinsD,))
             binCenters = np.zeros((nBinsD,))
             good = np.logical_and(ri > binMin, ri < binMax)
-            dGrid = np.linspace(dKpcGal[good].min(), dKpcGal[good].max(), num=nBinsD+1)
+            try:
+                dGrid = np.linspace(dKpcGal[good].min(), dKpcGal[good].max(), num=nBinsD+1)
+            except ValueError:
+                dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
             for k in range(nBinsD):
                 binCenters[k] = 0.5*(dGrid[k] + dGrid[k+1])
                 inDBin = np.logical_and(dKpcGal[good] > dGrid[k], dKpcGal[good] < dGrid[k+1])
@@ -365,5 +370,6 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     
 if __name__ == '__main__':
     field = 'HectoMap'
-    computeFieldPosteriors(field)
+    #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
+    makeTomographyCBins()
