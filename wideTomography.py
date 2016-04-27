@@ -3,8 +3,8 @@ import csv
 import pickle
 
 import numpy as np
-import matplotlib as mpl
-mpl.use('Agg')
+#import matplotlib as mpl
+#mpl.use('Agg')
 import matplotlib.pyplot as plt
 from astropy import units
 from astropy.coordinates import SkyCoord
@@ -12,10 +12,10 @@ from astropy.coordinates import SkyCoord
 import dGauss
 
 _fields = ['XMM', 'GAMA09', 'WIDE12H', 'GAMA15', 'HectoMap', 'VVDS', 'AEGIS']
-#_fields = ['AEGIS', 'HectoMap']
+#_fields = ['AEGIS']
 _bands = ['g', 'r', 'i', 'z', 'y']
 _colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
-#_colors = ['black', 'magenta']
+#_colors = ['black']
 
 def fileLen(fName):
     with open(fName) as f:
@@ -296,11 +296,15 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
         binMin = riMin
         for j in range(nBins):
             binMax = binMin + width
+            axes[j].set_title('{0} < r-i < {1}'.format(binMin, binMax), fontsize=fontSize)
+            axes[j].set_xlabel('r (kpc)', fontsize=fontSize)
+            axes[j].set_ylabel('Counts/r', fontsize=fontSize)
             counts = np.zeros((nBinsD,))
             binCenters = np.zeros((nBinsD,))
             good = np.logical_and(ri > binMin, ri < binMax)
             try:
-                dGrid = np.linspace(dKpcGal[good].min(), dKpcGal[good].max(), num=nBinsD+1)
+                #dGrid = np.linspace(dKpcGal[good].min(), dKpcGal[good].max(), num=nBinsD+1)
+                dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
             except ValueError:
                 dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
             for k in range(nBinsD):
@@ -308,9 +312,16 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                 inDBin = np.logical_and(dKpcGal[good] > dGrid[k], dKpcGal[good] < dGrid[k+1])
                 counts[k] = np.sum(inDBin)*1.0
             axes[j].plot(binCenters, counts/binCenters, color=_colors[i])
+            axes[j].errorbar(binCenters, counts/binCenters, yerr=np.sqrt(counts)/binCenters, marker='o', color=_colors[i])
             binMin += width
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wideTomography.png'), dpi=120, bbox_inches='tight')
+    plt.show()
     return fig
 
 def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
@@ -320,6 +331,7 @@ def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
     colNames = ['g-r', 'r-i', 'i-z', 'z-y']
     colLims = [(0.0, 1.5), (-0.2, 2.0), (-0.2, 1.0), (-0.2, 0.4)]
     fig = plt.figure(figsize=(24, 18), dpi=120)
+    fig.suptitle(field, fontsize=fontSize)
     for i in range(3):
         good = np.logical_and(Y > threshold, np.logical_and(magI > magBins[i][0], magI < magBins[i][1]))
         for j in range(i*3+1, i*3+4):
@@ -343,6 +355,81 @@ def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
             tick.label.set_fontsize(fontSize)
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
+
+def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, computePosteriors=False, fontSize=16, threshold = 0.9):
+    if computePosteriors:
+        with open('trainSet.pkl', 'rb') as f:
+            trainSet = pickle.load(f)
+        magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+        with open('clfsColsExt.pkl', 'rb') as f:
+            clfs = pickle.load(f)
+        X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
+        ra = trainSet.getAllRas()
+        dec = trainSet.getAllDecs()
+        magI = trainSet.getAllMags(band='i')
+        clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+        posteriors = clfXd.predict_proba(X, XErr, magI)
+        with open('cosmosTomPosteriors.pkl', 'wb') as f:
+            pickle.dump((ra, dec, X, XErr, magI, Y, posteriors), f)
+    else:
+        with open('cosmosTomPosteriors.pkl', 'rb') as f:
+            ra, dec, X, XErr, magI, Y, posteriors = pickle.load(f)
+    ri = X[:,1]
+    good = np.logical_and(True, magI <= 24.0)
+    good = np.logical_and(good, X[:,1] < 0.4)
+    good = np.logical_and(good, X[:,2] < 0.2)
+    ra = ra[good]; dec = dec[good]; ri = ri[good]; posteriors = posteriors[good]
+    X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
+    c = SkyCoord(ra=ra*units.radian, dec=dec*units.radian, frame='icrs')
+    b = c.galactic.b.rad
+    l = c.galactic.l.rad
+    magR = X[:,1] + magI
+    magG = X[:,0] + magR
+    magZ = -X[:,2] + magI
+    magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
+    dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+    labeledStar = np.logical_and(True, posteriors >= threshold)
+    goodStar = np.logical_and(Y, posteriors >= threshold)
+    badStar = np.logical_and(np.logical_not(Y), posteriors >= threshold)
+    missedStar = np.logical_and(Y, posteriors < threshold)
+    fig = plt.figure(figsize=(24, 18), dpi=120)
+    width = (riMax - riMin)/nBins
+    binMin = riMin
+    dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
+    for i in range(nBins):
+        binMax = binMin + width
+        ax = fig.add_subplot(3, 3, i+1)
+        ax.set_title('{0} < r-i < {1}'.format(binMin, binMax), fontsize=fontSize)
+        ax.set_xlabel('r (kpc)', fontsize=fontSize)
+        ax.set_ylabel('Counts/r', fontsize=fontSize)
+        inCBin = np.logical_and(ri > binMin, ri < binMax)
+        purity = np.zeros((nBinsD,))
+        completeness = np.zeros((nBinsD,))
+        binCenters = np.zeros((nBinsD,))
+        for j in range(nBinsD):
+            binCenters[j] = 0.5*(dGrid[j] + dGrid[j+1])
+            inDBin = np.logical_and(dKpcGal[inCBin] > dGrid[j], dKpcGal[inCBin] < dGrid[j+1])
+            #print "{0} < r-i < {1}".format(binMin, binMax)
+            #print "{0} < r < {1}: {2} counts".format(dGrid[j], dGrid[j+1], np.sum(inDBin))
+            if np.sum(labeledStar[inCBin][inDBin]) == 0:
+                purity[j] = 0.0
+            else:
+                purity[j] = np.sum(goodStar[inCBin][inDBin])*1.0/(np.sum(labeledStar[inCBin][inDBin]))
+            if np.sum(Y[inCBin][inDBin]) == 0:
+                completeness[j] = 0.0
+            else:
+                completeness[j] = np.sum(goodStar[inCBin][inDBin])*1.0/((np.sum(Y[inCBin][inDBin])))
+        ax.step(binCenters, purity, color='blue')
+        ax.step(binCenters, completeness, color='red')
+        binMin += width
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    dirHome = os.path.expanduser('~')
+    fig.savefig(os.path.join(dirHome, 'Desktop/wideTomScores.png'), dpi=120, bbox_inches='tight')
+    return fig
 
 def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     fig = plt.figure(dpi=120)
@@ -369,7 +456,7 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     return fig
     
 if __name__ == '__main__':
-    field = 'HectoMap'
+    field = 'VVDS'
     #computeFieldPosteriors(field)
-    #makeCCDiagrams(field)
-    makeTomographyCBins()
+    makeCCDiagrams(field)
+    #makeTomographyCBins()
