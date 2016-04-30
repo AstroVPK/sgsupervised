@@ -3,6 +3,7 @@ import csv
 import pickle
 
 import numpy as np
+from scipy.stats import beta
 #import matplotlib as mpl
 #mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -251,6 +252,23 @@ def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
     dKpc = np.power(10.0, (rHsc-magRAbsHsc)/5)/100
     return magRAbsHsc, dKpc
 
+def getJeffreysInterval(alpha, n, x):
+    if not np.logical_and(0.0 < alpha, 1.0 > alpha):
+        raise ValueError("alpha must be between 0 and 1.")
+    if not isinstance(x, int) or not isinstance(n, int):
+        raise ValueError("x and n must be integers.")
+    if x > n:
+        raise ValueError("x has to be less than or equal to n.")
+    if x == 0:
+        boundL = 0.0
+    else:
+        boundL = beta.ppf(alpha/2, x + 0.5, n - x + 0.5)
+    if x == n:
+        boundU = 1.0
+    else:
+        boundU = beta.ppf(1.0 - alpha/2, x + 0.5, n - x + 0.5)
+    return boundL, boundU
+
 def makeTomographyField(field, subsetSize=100000, threshold=0.9, fontSize=18):
     ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     good = np.logical_and(Y >= threshold, X[:,1] < 0.4)
@@ -356,7 +374,8 @@ def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
 
-def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, computePosteriors=False, fontSize=16, threshold = 0.9):
+def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, computePosteriors=False, fontSize=16,
+                                threshold = 0.9, alpha=0.05):
     if computePosteriors:
         with open('trainSet.pkl', 'rb') as f:
             trainSet = pickle.load(f)
@@ -401,16 +420,25 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
         ax = fig.add_subplot(3, 3, i+1)
         ax.set_title('{0} < r-i < {1}'.format(binMin, binMax), fontsize=fontSize)
         ax.set_xlabel('r (kpc)', fontsize=fontSize)
-        ax.set_ylabel('Counts/r', fontsize=fontSize)
+        ax.set_ylabel('Scores', fontsize=fontSize)
+        ax.set_ylim((0.0, 1.0))
         inCBin = np.logical_and(ri > binMin, ri < binMax)
         purity = np.zeros((nBinsD,))
         completeness = np.zeros((nBinsD,))
         binCenters = np.zeros((nBinsD,))
+        lPure = np.zeros((nBinsD,))
+        uPure = np.zeros((nBinsD,))
+        lComp = np.zeros((nBinsD,))
+        uComp = np.zeros((nBinsD,))
         for j in range(nBinsD):
             binCenters[j] = 0.5*(dGrid[j] + dGrid[j+1])
             inDBin = np.logical_and(dKpcGal[inCBin] > dGrid[j], dKpcGal[inCBin] < dGrid[j+1])
-            #print "{0} < r-i < {1}".format(binMin, binMax)
-            #print "{0} < r < {1}: {2} counts".format(dGrid[j], dGrid[j+1], np.sum(inDBin))
+            nPure = np.sum(labeledStar[inCBin][inDBin])
+            xPure = np.sum(goodStar[inCBin][inDBin])
+            lPure[j], uPure[j] = getJeffreysInterval(alpha, nPure, xPure)
+            nComp = np.sum(Y[inCBin][inDBin])
+            xComp = np.sum(goodStar[inCBin][inDBin])
+            lComp[j], uComp[j] = getJeffreysInterval(alpha, nComp, xComp)
             if np.sum(labeledStar[inCBin][inDBin]) == 0:
                 purity[j] = 0.0
             else:
@@ -418,15 +446,18 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
             if np.sum(Y[inCBin][inDBin]) == 0:
                 completeness[j] = 0.0
             else:
-                completeness[j] = np.sum(goodStar[inCBin][inDBin])*1.0/((np.sum(Y[inCBin][inDBin])))
-        ax.step(binCenters, purity, color='blue')
-        ax.step(binCenters, completeness, color='red')
+                completeness[j] = np.sum(goodStar[inCBin][inDBin])*1.0/(np.sum(Y[inCBin][inDBin]))
+        ax.step(binCenters, purity, color='blue', where='mid')
+        ax.step(binCenters, completeness, color='red', where='mid')
+        ax.errorbar(binCenters, purity, yerr=[purity-lPure, uPure-purity], color='blue', marker='o', fmt='o')
+        ax.errorbar(binCenters, completeness, yerr=[completeness-lComp, uComp-completeness], color='red', marker='o', fmt='o')
         binMin += width
     for ax in fig.get_axes():
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
+    plt.tight_layout()
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wideTomScores.png'), dpi=120, bbox_inches='tight')
     return fig
