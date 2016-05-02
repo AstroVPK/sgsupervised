@@ -374,7 +374,7 @@ def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
 
-def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, computePosteriors=False, fontSize=16,
+def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, computePosteriors=False, fontSize=18,
                                 threshold = 0.9, alpha=0.05):
     if computePosteriors:
         with open('trainSet.pkl', 'rb') as f:
@@ -441,10 +441,12 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
             lComp[j], uComp[j] = getJeffreysInterval(alpha, nComp, xComp)
             if np.sum(labeledStar[inCBin][inDBin]) == 0:
                 purity[j] = 0.0
+                lPure[j] = 0.0; uPure[j] = 0.0
             else:
                 purity[j] = np.sum(goodStar[inCBin][inDBin])*1.0/(np.sum(labeledStar[inCBin][inDBin]))
             if np.sum(Y[inCBin][inDBin]) == 0:
                 completeness[j] = 0.0
+                lComp[j] = 0.0; uComp[j] = 0.0
             else:
                 completeness[j] = np.sum(goodStar[inCBin][inDBin])*1.0/(np.sum(Y[inCBin][inDBin]))
         ax.step(binCenters, purity, color='blue', where='mid')
@@ -457,7 +459,13 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    plt.tight_layout()
+    fig.tight_layout()
+    ax = fig.add_subplot(3, 3, 9, frame_on=False)
+    ax.plot([], [], color='blue', marker='o', label='Purity')
+    ax.plot([], [], color='red', marker='o', label='Completeness')
+    ax.legend(loc='center', prop={'size':40})
+    ax.get_xaxis().set_ticks([])
+    ax.get_yaxis().set_ticks([])
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wideTomScores.png'), dpi=120, bbox_inches='tight')
     return fig
