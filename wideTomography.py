@@ -288,6 +288,52 @@ def makeTomographyField(field, subsetSize=100000, threshold=0.9, fontSize=18):
     ax.scatter(dKpc, magI, marker='.', s=1, color='black')
     return fig
 
+def precomputeTotalCount(field):
+    try:
+        fNamePost = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
+        totalCount = fileLen(fNamePost) - 1
+    except IOError:
+        fNamePost = '/home/jose/Data/wide{0}Posteriors.csv'.format(field)
+        totalCount = fileLen(fNamePost) - 1
+    with open('totalCount{0}.txt'.format(field), 'w') as f:
+        f.write('{0}\n'.format(totalCount))
+
+def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9):
+    width = (riMax - riMin)/nBins
+    ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    ri = X[:,1]
+    good = np.logical_and(True, magI <= 24.0)
+    good = np.logical_and(good, X[:,1] < 0.4)
+    good = np.logical_and(good, X[:,2] < 0.2)
+    good = np.logical_and(good, Y >= threshold)
+    ra = ra[good]; dec = dec[good]; ri = ri[good]
+    X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
+    c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
+    b = c.galactic.b.rad
+    l = c.galactic.l.rad
+    magR = X[:,1] + magI
+    magG = X[:,0] + magR
+    magZ = -X[:,2] + magI
+    magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
+    dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+    binMin = riMin
+    dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
+    counts = np.zeros((nBins, nBinsD))
+    binCenters = np.zeros((nBinsD,))
+    for i in range(nBins):
+        binMax = binMin + width
+        good = np.logical_and(ri > binMin, ri < binMax)
+        for j in range(nBinsD):
+            binCenters[j] = 0.5*(dGrid[j] + dGrid[j+1])
+            inDBin = np.logical_and(dKpcGal[good] > dGrid[j], dKpcGal[good] < dGrid[j+1])
+            counts[i][j] = np.sum(inDBin)*1.0
+        binMin += width
+    data = np.zeros((nBins+1, nBinsD))
+    data[0,:] = binCenters
+    for i in range(nBins):
+        data[i+1, :] = counts[i, :]
+    np.savetxt('radialCounts{0}.txt'.format(field), data)
+
 def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18):
     width = (riMax - riMin)/nBins
     fig = plt.figure(figsize=(24, 18), dpi=120)
