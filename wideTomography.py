@@ -3,7 +3,7 @@ import csv
 import pickle
 
 import numpy as np
-from scipy.stats import beta
+from scipy.stats import beta, poisson
 #import matplotlib as mpl
 #mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -298,7 +298,7 @@ def precomputeTotalCount(field):
     with open('totalCount{0}.txt'.format(field), 'w') as f:
         f.write('{0}\n'.format(totalCount))
 
-def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9):
+def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=200000, threshold=0.9):
     width = (riMax - riMin)/nBins
     ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     ri = X[:,1]
@@ -311,6 +311,9 @@ def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subs
     c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
     b = c.galactic.b.rad
     l = c.galactic.l.rad
+    bMean = np.mean(b); lMean = np.mean(l)
+    with open('meanCoord{0}.txt'.format(field), 'w') as f:
+        f.write('{0}, {1}\n'.format(bMean, lMean))
     magR = X[:,1] + magI
     magG = X[:,0] + magR
     magZ = -X[:,2] + magI
@@ -334,8 +337,12 @@ def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subs
         data[i+1, :] = counts[i, :]
     np.savetxt('radialCounts{0}.txt'.format(field), data)
 
-def getCountErrorBar(counts, nPure, xPure, nComp, xComp):
-    pass
+def getCountErrorBar(counts, nPure, xPure, nComp, xComp, alpha=0.05, size=10000):
+    samplesP = beta.rvs(xPure + 0.5, nPure - xPure + 0.5, size=size)
+    samplesC = beta.rvs(xComp + 0.5, nComp - xComp + 0.5, size=size)
+    samplesS = poisson.rvs(int(counts), size=size)
+    samples = samplesS*samplesP/samplesC
+    return 2*np.std(samples)
 
 def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18):
     width = (riMax - riMin)/nBins
@@ -343,8 +350,11 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
     axes = []
     for i in range(nBins):
         axes.append(fig.add_subplot(3, 3, i+1))
-    purity = pickle.load('purity.pkl')
-    completeness = pickle.load('completeness.pkl')
+    with open('purity.pkl', 'r') as f:
+        purity = pickle.load(f)
+    with open('completeness.pkl', 'r') as f:
+        completeness = pickle.load(f)
+    maxCount = 0.0
     for i, field in enumerate(_fields):
         data = np.loadtxt('radialCounts{0}.txt'.format(field))
         binCenters = data[0,:]
@@ -355,21 +365,32 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
             axes[j].set_xlabel('r (kpc)', fontsize=fontSize)
             axes[j].set_ylabel('Counts/r', fontsize=fontSize)
             counts = data[j+1,:]
-            correction = np.zeros(purity[j].shape)
-            correction = np.zeros(purity[j].shape)
-            errorU = np.zeros(purity[j].shape)
-            errorL = np.zeros(purity[j].shape)
+            correction = np.zeros((nBinsD,))
+            correction = np.zeros((nBinsD,))
+            error = np.zeros((nBinsD,))
+            riCenter = 0.5*(binMin + binMax)
+            grCenter = 0.15785242 + 1.93645872*riCenter
+            izCenter = -0.0207809 + 0.5644657*riCenter
+            iCenter = 24.0
+            rCenter = iCenter + riCenter
+            gCenter = rCenter + grCenter
+            zCenter = -iCenter - izCenter
+            magRAbsHsc, dKpc = getParallax(gCenter, rCenter, iCenter, zCenter)
+            dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
             for k in range(len(correction)):
                 if completeness[j][k][0] == 0.0 or completeness[j][k][1] == 0.0 or\
-                   purity[j][k][0] == 0.0 or purity[j][k][1] == 0.0:
+                   purity[j][k][0] == 0.0 or purity[j][k][1] == 0.0 or\
+                   counts[k] == 0.0:
                     correction[k] = 0.0
-                    errorU[k] = 0.0
-                    errorL[k] = 0.0
+                    error[k] = 0.0
                 else:
                     correction[k] = purity[j][k][1]/purity[j][k][0]/(completeness[j][k][1]/completeness[j][k][0])
-                    errorL, errorU = 
+                    error[k] = getCountErrorBar(counts[k], purity[j][k][0], purity[j][k][1], completeness[j][k][0], completeness[j][k][1])
             axes[j].plot(binCenters, counts/binCenters*correction, color=_colors[i])
-            axes[j].errorbar(binCenters, counts/binCenters*correction, yerr=np.sqrt(counts)/binCenters, marker='o', color=_colors[i])
+            axes[j].errorbar(binCenters, counts/binCenters*correction, yerr=error/binCenters, marker='o', color=_colors[i])
+            if (counts/binCenters*correction+error/binCenters).max() > maxCount:
+                maxCount = (counts/binCenters*correction+error/binCenters).max()
+                axes[j].set_ylim((0.0, maxCount*1.1))
             binMin += width
     for ax in fig.get_axes():
         for tick in ax.xaxis.get_major_ticks():
@@ -546,5 +567,7 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
 if __name__ == '__main__':
     field = 'VVDS'
     #computeFieldPosteriors(field)
-    makeCCDiagrams(field)
+    #makeCCDiagrams(field)
     #makeTomographyCBins()
+    for field in _fields:
+        precomputeRadialCounts(field)
