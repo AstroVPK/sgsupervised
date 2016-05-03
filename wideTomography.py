@@ -334,49 +334,42 @@ def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subs
         data[i+1, :] = counts[i, :]
     np.savetxt('radialCounts{0}.txt'.format(field), data)
 
+def getCountErrorBar(counts, nPure, xPure, nComp, xComp):
+    pass
+
 def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18):
     width = (riMax - riMin)/nBins
     fig = plt.figure(figsize=(24, 18), dpi=120)
     axes = []
     for i in range(nBins):
         axes.append(fig.add_subplot(3, 3, i+1))
+    purity = pickle.load('purity.pkl')
+    completeness = pickle.load('completeness.pkl')
     for i, field in enumerate(_fields):
-        ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
-        ri = X[:,1]
-        good = np.logical_and(True, magI <= 24.0)
-        good = np.logical_and(good, X[:,1] < 0.4)
-        good = np.logical_and(good, X[:,2] < 0.2)
-        good = np.logical_and(good, Y >= threshold)
-        ra = ra[good]; dec = dec[good]; ri = ri[good]
-        X = X[good]; XErr = XErr[good]; magI = magI[good]; Y = Y[good]
-        c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
-        b = c.galactic.b.rad
-        l = c.galactic.l.rad
-        magR = X[:,1] + magI
-        magG = X[:,0] + magR
-        magZ = -X[:,2] + magI
-        magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
-        dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+        data = np.loadtxt('radialCounts{0}.txt'.format(field))
+        binCenters = data[0,:]
         binMin = riMin
         for j in range(nBins):
             binMax = binMin + width
             axes[j].set_title('{0} < r-i < {1}'.format(binMin, binMax), fontsize=fontSize)
             axes[j].set_xlabel('r (kpc)', fontsize=fontSize)
             axes[j].set_ylabel('Counts/r', fontsize=fontSize)
-            counts = np.zeros((nBinsD,))
-            binCenters = np.zeros((nBinsD,))
-            good = np.logical_and(ri > binMin, ri < binMax)
-            try:
-                #dGrid = np.linspace(dKpcGal[good].min(), dKpcGal[good].max(), num=nBinsD+1)
-                dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
-            except ValueError:
-                dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
-            for k in range(nBinsD):
-                binCenters[k] = 0.5*(dGrid[k] + dGrid[k+1])
-                inDBin = np.logical_and(dKpcGal[good] > dGrid[k], dKpcGal[good] < dGrid[k+1])
-                counts[k] = np.sum(inDBin)*1.0
-            axes[j].plot(binCenters, counts/binCenters, color=_colors[i])
-            axes[j].errorbar(binCenters, counts/binCenters, yerr=np.sqrt(counts)/binCenters, marker='o', color=_colors[i])
+            counts = data[j+1,:]
+            correction = np.zeros(purity[j].shape)
+            correction = np.zeros(purity[j].shape)
+            errorU = np.zeros(purity[j].shape)
+            errorL = np.zeros(purity[j].shape)
+            for k in range(len(correction)):
+                if completeness[j][k][0] == 0.0 or completeness[j][k][1] == 0.0 or\
+                   purity[j][k][0] == 0.0 or purity[j][k][1] == 0.0:
+                    correction[k] = 0.0
+                    errorU[k] = 0.0
+                    errorL[k] = 0.0
+                else:
+                    correction[k] = purity[j][k][1]/purity[j][k][0]/(completeness[j][k][1]/completeness[j][k][0])
+                    errorL, errorU = 
+            axes[j].plot(binCenters, counts/binCenters*correction, color=_colors[i])
+            axes[j].errorbar(binCenters, counts/binCenters*correction, yerr=np.sqrt(counts)/binCenters, marker='o', color=_colors[i])
             binMin += width
     for ax in fig.get_axes():
         for tick in ax.xaxis.get_major_ticks():
@@ -461,6 +454,8 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
     width = (riMax - riMin)/nBins
     binMin = riMin
     dGrid = np.linspace(10.0, 100.0, num=nBinsD+1)
+    dataP = np.zeros((nBins, nBinsD, 2))
+    dataC = np.zeros((nBins, nBinsD, 2))
     for i in range(nBins):
         binMax = binMin + width
         ax = fig.add_subplot(3, 3, i+1)
@@ -485,6 +480,10 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
             nComp = np.sum(Y[inCBin][inDBin])
             xComp = np.sum(goodStar[inCBin][inDBin])
             lComp[j], uComp[j] = getJeffreysInterval(alpha, nComp, xComp)
+            dataP[i, j, 0] = np.sum(labeledStar[inCBin][inDBin])*1.0
+            dataP[i, j, 1] = np.sum(goodStar[inCBin][inDBin])*1.0
+            dataC[i, j, 0] = np.sum(Y[inCBin][inDBin])*1.0
+            dataC[i, j, 1] = np.sum(goodStar[inCBin][inDBin])*1.0
             if np.sum(labeledStar[inCBin][inDBin]) == 0:
                 purity[j] = 0.0
                 lPure[j] = 0.0; uPure[j] = 0.0
@@ -514,6 +513,10 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
     ax.get_yaxis().set_ticks([])
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wideTomScores.png'), dpi=120, bbox_inches='tight')
+    with open('purity.pkl', 'w') as f:
+        pickle.dump(dataP, f)
+    with open('completeness.pkl', 'w') as f:
+        pickle.dump(dataC, f)
     return fig
 
 def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
