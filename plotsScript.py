@@ -552,10 +552,10 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
                 sigma = sigma[good]
             if iz is None:
                 popt, pcov = _fitGriSlHsc(gr[good], ri[good], sigma=sigma)
-                popt = (0.12554858, 1.99441746)
+                popt = (0.15785242, 1.93645872)
             else:
                 popt, pcov = _fitRizSlHsc(ri[good], iz[good], sigma=sigma)
-                popt = (-0.02, 0.55)
+                popt = (-0.0207809, 0.5644657)
             print popt
             paramTuple = popt
         if iz is None:
@@ -643,8 +643,8 @@ def makePhotParallaxPlots(fontSize=18):
     figRiz = _makeIsoDensityPlot(ri, iz=iz, withHsc=True, minDens=0.0, cutIz=0.2, cutRi=0.4)
     #paramsGri = (1.30038049, -7.78059699, -0.71791215, -0.76761088, -0.19133522)
     #paramsRiz = (-0.01068287, 0.59929634, -0.19457149, 0.05357661)
-    paramsGri = (0.12554858, 1.99441746)
-    paramsRiz = (-0.02, 0.55)
+    paramsGri = (0.15785242, 1.93645872)
+    paramsRiz = (-0.0207809, 0.5644657)
     riSl = np.linspace(-0.05, 0.4, num=100)
     grSl = _getMsGrHsc(riSl, *paramsGri)
     izSl = _getMsIzHsc(riSl, *paramsRiz)
