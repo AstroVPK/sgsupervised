@@ -337,7 +337,7 @@ def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subs
         data[i+1, :] = counts[i, :]
     np.savetxt('radialCounts{0}.txt'.format(field), data)
 
-def getCountErrorBar(counts, nPure, xPure, nComp, xComp, alpha=0.05, size=10000):
+def getCountErrorBar(counts, nPure, xPure, nComp, xComp, alpha=0.05, size=100000):
     samplesP = beta.rvs(xPure + 0.5, nPure - xPure + 0.5, size=size)
     samplesC = beta.rvs(xComp + 0.5, nComp - xComp + 0.5, size=size)
     samplesS = poisson.rvs(int(counts), size=size)
@@ -368,14 +368,18 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
             correction = np.zeros((nBinsD,))
             correction = np.zeros((nBinsD,))
             error = np.zeros((nBinsD,))
-            riCenter = 0.5*(binMin + binMax)
+            riCenter = np.array([0.5*(binMin + binMax)])
             grCenter = 0.15785242 + 1.93645872*riCenter
             izCenter = -0.0207809 + 0.5644657*riCenter
-            iCenter = 24.0
+            iCenter = np.array([24.0])
             rCenter = iCenter + riCenter
             gCenter = rCenter + grCenter
-            zCenter = -iCenter - izCenter
+            zCenter = iCenter - izCenter
             magRAbsHsc, dKpc = getParallax(gCenter, rCenter, iCenter, zCenter)
+            with open('meanCoord{0}.txt'.format(field), 'r') as f:
+                reader = csv.reader(f)
+                line = reader.next()
+                b = float(line[0]); l = float(line[1])
             dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
             for k in range(len(correction)):
                 if completeness[j][k][0] == 0.0 or completeness[j][k][1] == 0.0 or\
@@ -387,12 +391,14 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                     correction[k] = purity[j][k][1]/purity[j][k][0]/(completeness[j][k][1]/completeness[j][k][0])
                     error[k] = getCountErrorBar(counts[k], purity[j][k][0], purity[j][k][1], completeness[j][k][0], completeness[j][k][1])
             axes[j].plot(binCenters, counts/binCenters*correction, color=_colors[i])
-            axes[j].errorbar(binCenters, counts/binCenters*correction, yerr=error/binCenters, marker='o', color=_colors[i])
+            axes[j].errorbar(binCenters, counts/binCenters*correction, yerr=error/binCenters, marker='o', color=_colors[i],
+                             label=r'Limit = {:2.0f} kpc'.format(dKpcGal[0]))
             if (counts/binCenters*correction+error/binCenters).max() > maxCount:
                 maxCount = (counts/binCenters*correction+error/binCenters).max()
                 axes[j].set_ylim((0.0, maxCount*1.1))
             binMin += width
     for ax in fig.get_axes():
+        ax.legend(loc='upper right')
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
