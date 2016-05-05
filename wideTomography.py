@@ -575,5 +575,5 @@ if __name__ == '__main__':
     #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
     #makeTomographyCBins()
-    for field in _fields:
-        precomputeRadialCounts(field)
+    for field in ['AEGIS']:
+        precomputeRadialCounts(field, subsetSize=None)
