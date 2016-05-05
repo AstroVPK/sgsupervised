@@ -393,9 +393,9 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
             axes[j].plot(binCenters, counts/binCenters*correction, color=_colors[i])
             axes[j].errorbar(binCenters, counts/binCenters*correction, yerr=error/binCenters, marker='o', color=_colors[i],
                              label=r'Limit = {:2.0f} kpc'.format(dKpcGal[0]))
-            if (counts/binCenters*correction+error/binCenters).max() > maxCount:
-                maxCount = (counts/binCenters*correction+error/binCenters).max()
-                axes[j].set_ylim((0.0, maxCount*1.1))
+            if (counts/binCenters*correction).max() > maxCount:
+                maxCount = (counts/binCenters*correction).max()
+                axes[j].set_ylim((0.0, maxCount*1.2))
             binMin += width
     for ax in fig.get_axes():
         ax.legend(loc='upper right')
