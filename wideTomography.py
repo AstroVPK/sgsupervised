@@ -344,7 +344,7 @@ def getCountErrorBar(counts, nPure, xPure, nComp, xComp, alpha=0.05, size=100000
     samples = samplesS*samplesP/samplesC
     return 2*np.std(samples)
 
-def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18):
+def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18, normalA=100.0):
     width = (riMax - riMin)/nBins
     fig = plt.figure(figsize=(24, 18), dpi=120)
     axes = []
@@ -355,6 +355,11 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
     with open('completeness.pkl', 'r') as f:
         completeness = pickle.load(f)
     maxCount = 0.0
+    totalCounts = {}
+    totalCount = 0
+    for i, field in enumerate(_fields):
+        totalCounts[field] = int(np.loadtxt('totalCount{0}.txt'.format(field)))
+        totalCount += totalCounts[field]
     for i, field in enumerate(_fields):
         data = np.loadtxt('radialCounts{0}.txt'.format(field))
         binCenters = data[0,:]
@@ -363,8 +368,9 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
             binMax = binMin + width
             axes[j].set_title('{0} < r-i < {1}'.format(binMin, binMax), fontsize=fontSize)
             axes[j].set_xlabel('r (kpc)', fontsize=fontSize)
-            axes[j].set_ylabel('Counts/r', fontsize=fontSize)
+            axes[j].set_ylabel(r'counts ($\mathrm{kpc}^{-1}\mathrm{arcsecond}^{-2}$)', fontsize=fontSize)
             counts = data[j+1,:]
+            areaFactor = 100.0*totalCounts[field]/totalCount
             correction = np.zeros((nBinsD,))
             correction = np.zeros((nBinsD,))
             error = np.zeros((nBinsD,))
@@ -390,11 +396,11 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                 else:
                     correction[k] = purity[j][k][1]/purity[j][k][0]/(completeness[j][k][1]/completeness[j][k][0])
                     error[k] = getCountErrorBar(counts[k], purity[j][k][0], purity[j][k][1], completeness[j][k][0], completeness[j][k][1])
-            axes[j].plot(binCenters, counts/binCenters*correction, color=_colors[i])
-            axes[j].errorbar(binCenters, counts/binCenters*correction, yerr=error/binCenters, marker='o', color=_colors[i],
+            axes[j].plot(binCenters, counts/binCenters*correction/areaFactor, color=_colors[i])
+            axes[j].errorbar(binCenters, counts/binCenters*correction/areaFactor, yerr=error/binCenters/areaFactor, marker='o', color=_colors[i],
                              label=r'Limit = {:2.0f} kpc'.format(dKpcGal[0]))
             if (counts/binCenters*correction).max() > maxCount:
-                maxCount = (counts/binCenters*correction).max()
+                maxCount = (counts/binCenters*correction/areaFactor).max()
                 axes[j].set_ylim((0.0, maxCount*1.2))
             binMin += width
     for ax in fig.get_axes():
@@ -574,8 +580,8 @@ if __name__ == '__main__':
     #field = 'VVDS'
     #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
-    #makeTomographyCBins()
-    for field in _fields:
+    makeTomographyCBins()
+    #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
-        precomputeTotalCount(field)
+        #precomputeTotalCount(field)
