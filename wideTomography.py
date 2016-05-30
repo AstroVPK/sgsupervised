@@ -4,8 +4,8 @@ import pickle
 
 import numpy as np
 from scipy.stats import beta, poisson
-#import matplotlib as mpl
-#mpl.use('Agg')
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 from astropy import units
 from astropy.coordinates import SkyCoord
@@ -408,7 +408,7 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
     plt.show()
     return fig
 
-def makeCCDiagrams(field, threshold = 0.9, subsetSize=100000, fontSize=18):
+def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18):
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0)]
     ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
@@ -571,9 +571,11 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     return fig
     
 if __name__ == '__main__':
-    field = 'VVDS'
+    #field = 'VVDS'
     #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
     #makeTomographyCBins()
-    for field in ['AEGIS']:
-        precomputeRadialCounts(field, subsetSize=None)
+    for field in _fields:
+        #makeCCDiagrams(field)
+        #precomputeRadialCounts(field, subsetSize=None)
+        precomputeTotalCount(field)
