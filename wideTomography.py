@@ -344,7 +344,8 @@ def getCountErrorBar(counts, nPure, xPure, nComp, xComp, alpha=0.05, size=100000
     samples = samplesS*samplesP/samplesC
     return 2*np.std(samples)
 
-def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18, normalA=100.0):
+def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100000, threshold=0.9, fontSize=18,
+                        normalA=100.0, qH=0.5, nH=2.5, normalH=2.0e4):
     width = (riMax - riMin)/nBins
     fig = plt.figure(figsize=(24, 18), dpi=120)
     axes = []
@@ -354,12 +355,12 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
         purity = pickle.load(f)
     with open('completeness.pkl', 'r') as f:
         completeness = pickle.load(f)
-    maxCount = 0.0
     totalCounts = {}
     totalCount = 0
     for i, field in enumerate(_fields):
         totalCounts[field] = int(np.loadtxt('totalCount{0}.txt'.format(field)))
         totalCount += totalCounts[field]
+    maxCounts = np.zeros((nBins,))
     for i, field in enumerate(_fields):
         data = np.loadtxt('radialCounts{0}.txt'.format(field))
         binCenters = data[0,:]
@@ -386,6 +387,12 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                 reader = csv.reader(f)
                 line = reader.next()
                 b = float(line[0]); l = float(line[1])
+                dEarth = binCenters*np.cos(b)*np.cos(l)+np.sqrt((8.0*np.cos(b)*np.cos(l))**2+binCenters**2-8.0**2)
+                sinBStar = dEarth*np.sin(b)/binCenters
+                cosBStar = np.sqrt(1.0 - sinBStar**2)
+                RStar = binCenters*cosBStar
+                ZStar = binCenters*sinBStar
+                haloModel = normalH*np.power(np.sqrt(binCenters**2+(ZStar/qH)**2), -nH)
             dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
             for k in range(len(correction)):
                 if completeness[j][k][0] == 0.0 or completeness[j][k][1] == 0.0 or\
@@ -396,12 +403,13 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                 else:
                     correction[k] = purity[j][k][1]/purity[j][k][0]/(completeness[j][k][1]/completeness[j][k][0])
                     error[k] = getCountErrorBar(counts[k], purity[j][k][0], purity[j][k][1], completeness[j][k][0], completeness[j][k][1])
-            axes[j].plot(binCenters, counts/binCenters*correction/areaFactor, color=_colors[i])
-            axes[j].errorbar(binCenters, counts/binCenters*correction/areaFactor, yerr=error/binCenters/areaFactor, marker='o', color=_colors[i],
+            #axes[j].plot(binCenters, counts/binCenters*correction/areaFactor, color=_colors[i])
+            axes[j].plot(binCenters, haloModel*counts[0]/binCenters[0]*correction[0]/areaFactor/haloModel[0], color=_colors[i], linestyle='-')
+            axes[j].errorbar(binCenters, counts/binCenters*correction/areaFactor, yerr=error/binCenters/areaFactor, fmt='o', color=_colors[i],
                              label=r'Limit = {:2.0f} kpc'.format(dKpcGal[0]))
-            if (counts/binCenters*correction).max() > maxCount:
-                maxCount = (counts/binCenters*correction/areaFactor).max()
-                axes[j].set_ylim((0.0, maxCount*1.2))
+            if (counts/binCenters*correction/areaFactor).max() > maxCounts[j]:
+                maxCounts[j] = (counts/binCenters*correction/areaFactor).max()
+                axes[j].set_ylim((0.0, maxCounts[j]*1.1))
             binMin += width
     for ax in fig.get_axes():
         ax.legend(loc='upper right')
