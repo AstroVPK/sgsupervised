@@ -17,6 +17,7 @@ import supervisedEtl as etl
 import dGauss
 
 import lsst.afw.table as afwTable
+from lsst.pex.exceptions import LsstCppException
 
 import utils
 
@@ -211,7 +212,7 @@ cgr = (-0.00816446, -0.08366937, -0.00726883)
 cri = (0.00231810,  0.01284177, -0.03068248)
 ciz = (0.00130204, -0.16922042, -0.01374245)
 czi = (-0.00680620,  0.01353969,  0.01479369)
-Aiz = ciz[2] - czi[2] 
+Aiz = ciz[2] - czi[2]
 Biz = 1.0 + ciz[1] + czi[1]
 Ari = cri[2]
 Bri = 1.0 + cri[1]
@@ -251,10 +252,10 @@ def _fromHscToSdss(grHsc, riHsc, izHsc, giveClosest=True):
     return grSdss, riSdss, izSdss
 
 def _fromSdssToHsc(gSdss, rSdss, iSdss, zSdss):
-    grSdss = gSdss - rSdss 
-    riSdss = rSdss - iSdss 
-    izSdss = iSdss - zSdss 
-    ziSdss = zSdss - iSdss 
+    grSdss = gSdss - rSdss
+    riSdss = rSdss - iSdss
+    izSdss = iSdss - zSdss
+    ziSdss = zSdss - iSdss
     gHsc = gSdss + cgr[0] + cgr[1]*grSdss + cgr[2]*grSdss**2
     rHsc = rSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
     iHsc = iSdss + ciz[0] + ciz[1]*izSdss + ciz[2]*izSdss**2
@@ -306,14 +307,14 @@ def _getPColors(g, r, i):
         #P2[isInNan] = np.nan
         #raise ValueError("I've found an object that is no regime!")
     isX = np.logical_not(isW)
-    As[isW] = np.array([[0.928, -0.556, -0.372], 
-                        [-0.227, 0.792, -0.567], 
+    As[isW] = np.array([[0.928, -0.556, -0.372],
+                        [-0.227, 0.792, -0.567],
                         [0.0, 0.0, 1.0]])
-    Bs[isW, 0] = P1[isW] + 0.425; Bs[isW, 1] = 0.0 - 0.050; Bs[isW, 2] = i[isW] 
-    As[isX] = np.array([[0.0, 1.0, -1.0], 
-                        [0.707, -0.707, 0.0], 
+    Bs[isW, 0] = P1[isW] + 0.425; Bs[isW, 1] = 0.0 - 0.050; Bs[isW, 2] = i[isW]
+    As[isX] = np.array([[0.0, 1.0, -1.0],
+                        [0.707, -0.707, 0.0],
                         [0.0, 0.0, 1.0]])
-    Bs[isX, 0] = P1[isX]; Bs[isX, 1] = 0.0 + 0.988; Bs[isX, 2] = i[isX] 
+    Bs[isX, 0] = P1[isX]; Bs[isX, 1] = 0.0 + 0.988; Bs[isX, 2] = i[isX]
     gris = np.linalg.solve(As, Bs)
     grProj = gris[:,0] - gris[:,1]
     riProj = gris[:,1] - gris[:,2]
@@ -354,11 +355,11 @@ def _loadFilter(band):
 
 def _regridSed(lamSed, fSed, lamFilt):
     interpSed = interp1d(lamSed, fSed, kind='linear')
-    fSedRegrid = np.zeros(lamFilt.shape) 
+    fSedRegrid = np.zeros(lamFilt.shape)
     for i in range(len(fSedRegrid)):
         fSedRegrid[i] = interpSed(lamFilt[i])
     return fSedRegrid
-    
+
 def computeColor(stringZ, stringT, stringG, color):
     dataCK = _loadCKData(stringZ, stringT)
     bandBlue = color[0]
@@ -392,13 +393,13 @@ def plotIsochrones(fontSize=18):
         ax.set_ylim(colLimY[i])
         bandBlue = 'LSST_' + color[0]
         bandRed = 'LSST_' + color[2]
-        ax.plot(iReaderHaloOut.isochrones[10.0][bandBlue]-iReaderHaloOut.isochrones[10.0][bandRed], iReaderHaloOut.isochrones[10.0][bandBlue], 
+        ax.plot(iReaderHaloOut.isochrones[10.0][bandBlue]-iReaderHaloOut.isochrones[10.0][bandRed], iReaderHaloOut.isochrones[10.0][bandBlue],
                 linestyle='-', color='black', label=r'Outer Halo')
         ax.plot(iReaderHaloIn.isochrones[10.0][bandBlue]-iReaderHaloIn.isochrones[10.0][bandRed], iReaderHaloIn.isochrones[10.0][bandBlue],
                 linestyle='--', color='black', label=r'Inner Halo')
-        ax.plot(iReaderDiskThick.isochrones[10.0][bandBlue]-iReaderDiskThick.isochrones[10.0][bandRed], iReaderDiskThick.isochrones[10.0][bandBlue], 
+        ax.plot(iReaderDiskThick.isochrones[10.0][bandBlue]-iReaderDiskThick.isochrones[10.0][bandRed], iReaderDiskThick.isochrones[10.0][bandBlue],
                 linestyle=':', color='black', label=r'Thick Disk')
-        ax.plot(iReaderDiskThin.isochrones[10.0][bandBlue]-iReaderDiskThin.isochrones[10.0][bandRed], iReaderDiskThin.isochrones[10.0][bandBlue], 
+        ax.plot(iReaderDiskThin.isochrones[10.0][bandBlue]-iReaderDiskThin.isochrones[10.0][bandRed], iReaderDiskThin.isochrones[10.0][bandBlue],
                 linestyle='-.', color='black', label=r'Solar')
         ax.invert_yaxis()
         ax.legend(loc='upper right')
@@ -444,7 +445,7 @@ def plotCmdPhotoParallax(trainClfs=False, fontSize=18):
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
-def plotCKModels(colorX='g-r', colorY = 'r-i', zs=['m25', 'p00'], 
+def plotCKModels(colorX='g-r', colorY = 'r-i', zs=['m25', 'p00'],
                  gs=['g30', 'g35', 'g40', 'g45', 'g50'], ts='all', markersZ=['o', 'v'],
                  labelsZ=[r'[M/H]=-2.5', r'[M/H]=0.0'], fontSize=18):
     assert isinstance(zs, list)
@@ -591,7 +592,7 @@ def _makeIsoDensityPlot(ri, gr=None, iz=None, withHsc=False, paramTuple=None, mi
         axData.set_ylabel('i-z', fontsize=fontSize)
         try:
             axData.plot(riSl, izSl, color='black')
-        except UnboundLocalError: 
+        except UnboundLocalError:
             pass
         if cutRi is not None and cutIz is not None:
             axData.plot([cutRi, cutRi], [-0.1, cutIz], color='black', linestyle='--')
@@ -897,7 +898,7 @@ def boxStarsTom(cutRedGr=1.2, cutRedRi=0.7):
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     return fig
 
-def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l=236.81366468, 
+def colExtStarsTom(trainClfs=False, cutRedRi=0.4, cutRedIz=0.2, b=42.10264796, l=236.81366468,
                    fontSize=18, computePosteriors=False):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -1185,7 +1186,7 @@ def highPostStarsShape(trainClfs=False, withBox=False):
     fig.savefig(fileFig, dpi=120, bbox_inches='tight')
     plt.show()
 
-def morphStarsPlotsSingle(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.5, 1.0), xRange=(23.5, 24.5), 
+def morphStarsPlotsSingle(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.5, 1.0), xRange=(23.5, 24.5),
                           yRange=(-400000, 400000), ylabel='rTrace', asLogX=False, xlim=(18.0, 27.0), xlabel='Magnitude'):
     trains = {}
     for band in ['g', 'r', 'i', 'z', 'y']:
@@ -1200,7 +1201,7 @@ def morphStarsPlotsSingle(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.5,
     plt.show()
     return trains
 
-def morphStarsPlotsMulti(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.4, 1), xRange=(50.0, 3000.0), 
+def morphStarsPlotsMulti(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.4, 1), xRange=(50.0, 3000.0),
                          yRange=(-4, 4), ylabel='rTrace', asLogX=True, xlim=(5.0, 3000), xlabel='S/N'):
     with open('trainSetHsmMultiBand.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -1218,7 +1219,7 @@ def morphStarsPlotsMulti(train=False, featuresCuts={1:(None, 0.2)}, ylim=(-0.4, 
     figScores.savefig('/u/garmilla/Desktop/scoresHsmMulti.png', dpi=120, bbox_inches='tight')
     return train
 
-def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0), 
+def rcPlots(rerun='Cosmos1', polyOrder=3, snrType='snrPsf', extType='extHsmDeconv', ylim=(-2, 5), xRange=(10.0, 3000.0),
             yRange=(-20, 20), ylabel='rTrace', featuresCuts={1:(None, 1.0)}, asLogX=True, xlim=(5.0, 3000), xlabel='S/N',
             singleBand=False, band='i'):
     if rerun == 'Cosmos1':
@@ -2030,6 +2031,50 @@ def extMomentsCompPlots(wideCat=1, withDeepCat=True, choiceSize=50000, fontSize=
 
     return figScat, figHist, figScoresExtWide, figScoresMomWide, figScoresExtDeep, figScoresMomDeep
 
+def makeCosmosWidePlots(band='i', size=100000, fontSize=18):
+    _names = ['Best', 'Median', 'Worst']
+    _strMag = r'$\mathrm{Mag}_{cmodel}$'
+    _strMagPsf = r'$\mathrm{Mag}_{psf}$'
+    figPhot = plt.figure(figsize=(24, 12), dpi=120)
+    for i, name in enumerate(_names):
+        try:
+            catName = '/scr/depot0/garmilla/HSC/matchS15BWide{0}.fits'.format(name)
+            cat = afwTable.SimpleCatalog.readFits(catName)
+        except LsstCppException:
+            catName = '/home/jose/Data/matchS15BWide{0}.fits'.format(name)
+            cat = afwTable.SimpleCatalog.readFits(catName)
+        axScatter = figPhot.add_subplot(2, 3, i+1)
+        axScatter.set_xlabel(r'{0} HSC-{1}'.format(_strMag, band.upper()), fontsize=fontSize)
+        axScatter.set_ylabel(r'{0}-{1} HSC-{2}'.format(_strMagPsf, _strMag, band.upper()), fontsize=fontSize)
+        axScatter.set_xlim((18.0, 26.0))
+        axScatter.set_ylim((-0.01, 0.2))
+        axScatter.set_title(name, fontsize=fontSize)
+        ext = cat.get('{0}ext'.format(band))
+        mag = cat.get('{0}mag'.format(band))
+        stellar = cat.get('mu.class') == 2
+        choice = np.random.choice(len(ext), size=size, replace=False)
+        for j in choice:
+            if ext[j] >= -0.01 and ext[j] <= 0.2 and mag[j] >= 18.0 and mag[j] <= 26.0:
+                if stellar[j]:
+                    axScatter.plot(mag[j], ext[j], marker='.', markersize=1, color='blue')
+                else:
+                    axScatter.plot(mag[j], ext[j], marker='.', markersize=1, color='red')
+        good = np.logical_and(mag > 24.0, mag < 25.0)
+        dataStars = ext[np.logical_and(good, stellar)]
+        dataGals = ext[np.logical_and(good, np.logical_not(stellar))]
+        axHist = figPhot.add_subplot(2, 3, i+4)
+        axHist.set_xlabel(r'{0}-{1} HSC-{2}'.format(_strMagPsf, _strMag, band.upper()), fontsize=fontSize)
+        axHist.set_ylabel('Counts', fontsize=fontSize)
+        hist, bins = np.histogram(ext, bins=50, range=(-0.05, 0.3))
+        axHist.hist(dataStars, bins=bins, histtype='step', color='blue', label='Stars', linewidth=2)
+        axHist.hist(dataGals, bins=bins, histtype='step', color='red', label='Galaxies', linewidth=2)
+    for ax in figPhot.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    plt.show()
+
 if __name__ == '__main__':
     #cutsPlots()
     #colExPlots()
@@ -2039,7 +2084,7 @@ if __name__ == '__main__':
     #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0), yRange=(-0.1, 0.50),
     #         ylabel='Mag_psf-Mag_cmodel', featuresCuts={1:(None, 0.1)})
     #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', snrType='mag', ylim=(-0.02, 0.1), xRange=(18.0, 25.2), yRange=(-0.1, 0.50),
-    #        ylabel='mag_psf-mag_cmodel (HSC-I deep)', featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0), 
+    #        ylabel='mag_psf-mag_cmodel (HSC-I deep)', featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0),
     #        xlabel='mag_cmodel (HSC-I deep)')
     #magExtPlots()
     #extCutRoc()
@@ -2054,4 +2099,5 @@ if __name__ == '__main__':
     #extCorrPlot()
     #peterPlot()
     #xdColExtFitScores()
-    xdColExtSvmScores()
+    #xdColExtSvmScores()
+    makeCosmosWidePlots()
