@@ -2075,6 +2075,49 @@ def makeCosmosWidePlots(band='i', size=100000, fontSize=18):
             tick.label.set_fontsize(fontSize)
     plt.show()
 
+def makeCosmosWideScoresPlot(fontSize=18):
+    with open('clfsColsExt.pkl', 'rb') as f:
+        clfs = pickle.load(f)
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    _names = ['Best', 'Median', 'Worst']
+    for i, name in enumerate(_names):
+        with open('trainSet{0}.pkl'.format(name), 'rb') as f:
+            trainSet = pickle.load(f)
+        X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
+        mags = trainSet.getAllMags(band='i')
+        clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+        posteriors = clfXd.predict_proba(X, XErr, mags)
+        figPosts = plt.figure(figsize=(16, 6), dpi=120)
+        axPostT = figPosts.add_subplot(1, 2, 1)
+        axPostV = figPosts.add_subplot(1, 2, 2)
+        axPostT.set_xlabel('P(Star|Colors+Extendedness)', fontsize=fontSize)
+        axPostT.set_ylabel('Star Fraction', fontsize=fontSize)
+        axPostV.set_xlabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+        axPostV.set_ylabel('P(Star|Colors+Extendedness)', fontsize=fontSize)
+        posteriorBins = np.linspace(0.0, 1.0, num=20)
+        starFracs = np.zeros((len(posteriorBins)-1,))
+        barWidth = posteriorBins[1] - posteriorBins[0]
+        for i in range(len(posteriorBins)-1):
+            pBin = (posteriorBins[i], posteriorBins[i+1])
+            good = np.logical_and(posteriors > pBin[0], posteriors < pBin[1])
+            starFracs[i] = np.sum(Y[good])*1.0/np.sum(good)
+        axPostT.bar(posteriorBins[:-1], starFracs, barWidth, color='black', fill=False)
+        axPostT.plot(posteriorBins, posteriorBins, linestyle='--', color='black')
+        axPostT.set_xlim((0.0, 1.0))
+        choice = np.random.choice(len(X), size=len(X), replace=False)
+        for idx in choice:
+            if Y[idx]:
+                axPostV.plot(mags[idx], posteriors[idx], marker='.', markersize=2, color='blue')
+            else:
+                axPostV.plot(mags[idx], posteriors[idx], marker='.', markersize=2, color='red')
+        axPostV.set_xlim((18.0, 25.0))
+        for ax in figPosts.get_axes():
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label.set_fontsize(fontSize)
+        plt.show() 
+
 if __name__ == '__main__':
     #cutsPlots()
     #colExPlots()
@@ -2100,4 +2143,5 @@ if __name__ == '__main__':
     #peterPlot()
     #xdColExtFitScores()
     #xdColExtSvmScores()
-    makeCosmosWidePlots()
+    #makeCosmosWidePlots()
+    makeCosmosWideScoresPlot()
