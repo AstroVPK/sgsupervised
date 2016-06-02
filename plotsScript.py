@@ -2139,6 +2139,30 @@ def makeCosmosWideScoresPlot(fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '
                                              kargsPred={'threshold': cut}, colExt=True)
         figScores.savefig(os.path.join(dirHome, 'Desktop/cosmosWideScores{0}.png'.format(name)), dpi=120, bbox_inches='tight')
 
+def cosmosWideSvmScores(trainXd=False, trainSvm=False, fontSize=18):
+    _strMag = r'$\mathrm{Mag}_{cmodel}$'
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    with open('clfsColsExt.pkl', 'rb') as f:
+        clfs = pickle.load(f)
+    with open('clfSvm.pkl', 'rb') as f:
+        clfSvm = pickle.load(f)
+    clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+    _names = ['Best', 'Median', 'Worst']
+    for name in _names:
+        with open('trainSet{0}.pkl'.format(name), 'rb') as f:
+            trainSet = pickle.load(f)
+        train = etl.Training(trainSet, clfXd)
+        figScores = train.plotScores(sType='test', xlabel=r'{0} HSC-I Wide {1}'.format(_strMag, name),
+                                     linestyle='-', legendLabel=r'XD P(Star)=0.5 Cut', standardized=False,
+                                     magRange=(18.5, 25.0), suptitle=r'XD vs SVM {0} Seeing'.format(name),
+                                     kargsPred={'threshold': 0.5}, colExt=True)
+        train = etl.Training(trainSet, clfSvm)
+        figScores = train.plotScores(sType='test', fig=figScores,
+                                     xlabel=r'{0} HSC-I Wide {1}'.format(_strMag, name), linestyle='--',
+                                     legendLabel=r'SVM', standardized=False, magRange=(18.5, 25.0), svm=True)
+        dirHome = os.path.expanduser('~')
+        figScores.savefig(os.path.join(dirHome, 'Desktop/cosmosWideSvmScores{0}.png').format(name), dpi=120, bbox_inches='tight')
+
 if __name__ == '__main__':
     #cutsPlots()
     #colExPlots()
@@ -2163,6 +2187,7 @@ if __name__ == '__main__':
     #extCorrPlot()
     #peterPlot()
     #xdColExtFitScores()
-    #xdColExtSvmScores()
+    #xdColExtSvmScores(trainSvm=True)
     #makeCosmosWidePlots()
-    makeCosmosWideScoresPlot()
+    #makeCosmosWideScoresPlot()
+    cosmosWideSvmScores()
