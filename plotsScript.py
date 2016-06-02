@@ -2076,6 +2076,7 @@ def makeCosmosWidePlots(band='i', size=100000, fontSize=18):
     plt.show()
 
 def makeCosmosWideScoresPlot(fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '-', ':']):
+    _strMag = r'$\mathrm{Mag}_{cmodel}$'
     with open('clfsColsExt.pkl', 'rb') as f:
         clfs = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
@@ -2083,8 +2084,6 @@ def makeCosmosWideScoresPlot(fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '
     for i, name in enumerate(_names):
         with open('trainSet{0}.pkl'.format(name), 'rb') as f:
             trainSet = pickle.load(f)
-        #X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
-        #mags = trainSet.getAllMags(band='i')
         X, XErr, Y = trainSet.genColExtTrainSet(mode='test')
         mags = trainSet.getTestMags(band='i')
         clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
@@ -2121,7 +2120,24 @@ def makeCosmosWideScoresPlot(fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '
                 tick.label.set_fontsize(fontSize)
             for tick in ax.yaxis.get_major_ticks():
                 tick.label.set_fontsize(fontSize)
-        plt.show() 
+        dirHome = os.path.expanduser('~')
+        figPosts.savefig(os.path.join(dirHome, 'Desktop/cosmosWidePosteriors{0}.png'.format(name)), dpi=120, bbox_inches='tight')
+        train = etl.Training(trainSet, clfXd)
+        for i, cut in enumerate(cuts):
+            if i == 0:
+                figScores = train.plotScores(sType='test',
+                                             xlabel=r'{0} HSC-I Wide {1}'.format(_strMag, name),
+                                             linestyle=style[i], legendLabel=r'P(Star)={0}'.format(cut),
+                                             standardized=False, magRange=(18.5, 25.0),
+                                             suptitle=r'P(Star|Colors+Extendedness) Wide {0}'.format(name),
+                                             kargsPred={'threshold': cut}, colExt=True)
+            else:
+                figScores = train.plotScores(sType='test', fig=figScores,
+                                             xlabel=r'{0} HSC-I Wide {1}'.format(_strMag, name),
+                                             linestyle=style[i], legendLabel=r'P(Star)={0}'.format(cut),
+                                             standardized=False, magRange=(18.5, 25.0),
+                                             kargsPred={'threshold': cut}, colExt=True)
+        figScores.savefig(os.path.join(dirHome, 'Desktop/cosmosWideScores{0}.png'.format(name)), dpi=120, bbox_inches='tight')
 
 if __name__ == '__main__':
     #cutsPlots()
