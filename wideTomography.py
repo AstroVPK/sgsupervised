@@ -389,6 +389,9 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                 b = float(line[0]); l = float(line[1])
                 dEarth = binCenters*np.cos(b)*np.cos(l)+np.sqrt((8.0*np.cos(b)*np.cos(l))**2+binCenters**2-8.0**2)
                 sinBStar = dEarth*np.sin(b)/binCenters
+                gtr = np.logical_not(sinBStar <= 1.0)
+                dEarth[gtr] = binCenters[gtr]*np.cos(b)*np.cos(l)-np.sqrt((8.0*np.cos(b)*np.cos(l))**2+binCenters[gtr]**2-8.0**2)
+                sinBStar[gtr] = dEarth[gtr]*np.sin(b)/binCenters[gtr]
                 cosBStar = np.sqrt(1.0 - sinBStar**2)
                 RStar = binCenters*cosBStar
                 ZStar = binCenters*sinBStar
@@ -403,16 +406,28 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                 else:
                     correction[k] = purity[j][k][1]/purity[j][k][0]/(completeness[j][k][1]/completeness[j][k][0])
                     error[k] = getCountErrorBar(counts[k], purity[j][k][0], purity[j][k][1], completeness[j][k][0], completeness[j][k][1])
+            #import ipdb; ipdb.set_trace()
             #axes[j].plot(binCenters, counts/binCenters*correction/areaFactor, color=_colors[i])
+            gtr = counts*correction < error
+            error[gtr] = 0.999*counts[gtr]*correction[gtr]
             axes[j].plot(binCenters, haloModel*counts[0]/binCenters[0]*correction[0]/areaFactor/haloModel[0], color=_colors[i], linestyle='-')
             axes[j].errorbar(binCenters, counts/binCenters*correction/areaFactor, yerr=error/binCenters/areaFactor, fmt='o', color=_colors[i],
                              label=r'Limit = {:2.0f} kpc'.format(dKpcGal[0]))
+            axes[j].plot([dKpcGal[0], dKpcGal[0]], [0.05, 40.0], linestyle='--', color=_colors[i])
             if (counts/binCenters*correction/areaFactor).max() > maxCounts[j]:
                 maxCounts[j] = (counts/binCenters*correction/areaFactor).max()
-                axes[j].set_ylim((0.0, maxCounts[j]*1.1))
+                #axes[j].set_ylim((maxCounts[j]*1.0e-2, maxCounts[j]*2.0))
+                axes[j].set_ylim((0.05, 40.0))
+                axes[j].set_xlim((14.0, 120.0))
+                axes[j].set_yscale('log')
+                axes[j].set_xscale('log')
+                axes[j].set_yticks([0.1, 0.2, 0.4, 1.0, 2.0, 4.0, 10.0, 20.0])
+                axes[j].set_yticklabels(['0.1', '0.2', '0.4', '1.0', '2.0', '4.0', '10.0', '20.0'])
+                axes[j].set_xticks([20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0])
+                axes[j].set_xticklabels(['20.0', '', '40.0', '', '', '', '', '', '100.0'])
             binMin += width
     for ax in fig.get_axes():
-        ax.legend(loc='upper right')
+        #ax.legend(loc='lower left')
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
