@@ -4,9 +4,10 @@ import pickle
 
 import numpy as np
 from scipy.stats import beta, poisson
-import matplotlib as mpl
-mpl.use('Agg')
+#import matplotlib as mpl
+#mpl.use('Agg')
 import matplotlib.pyplot as plt
+from scipy.optimize import brentq
 from astropy import units
 from astropy.coordinates import SkyCoord
 
@@ -575,10 +576,35 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
         pickle.dump(dataC, f)
     return fig
 
+def _getFl(a=0.064, b=0.970, c=0.233, d=0.776, dGal=10.0, bGal=0.0):
+    rhs = 1.0/np.cos(bGal)*(-c*np.sin(bGal) - d/dGal)
+    def F(l):
+        return a*np.cos(l) + b*np.sin(l) - rhs
+    return F
+
+def _getFb(a=0.064, b=0.970, c=0.233, d=0.776, dGal=10.0, l=0.0):
+    lhs = a*np.cos(l) + b*np.sin(l)
+    def F(bGal):
+        return 1.0/np.cos(bGal)*(-c*np.sin(bGal) - d/dGal) - lhs
+    return F
+
+def getLBPairs(dGal=10.0):
+    l = np.linspace(-np.pi, np.pi, num=100)
+    b = np.zeros(l.shape)
+    for i in range(len(l)):
+        F = _getFb(l=l[i])
+        brentMin = -np.pi/2; brentMax = np.pi/2
+        b[i] = brentq(F, brentMin, brentMax)
+    return l, b
+
 def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(111, projection='mollweide')
     ax.grid()
+    l, b = getLBPairs(dGal=5.0)
+    ax.plot(l, b, color='black')
+    l, b = getLBPairs(dGal=20.0)
+    ax.plot(l, b, color='black')
     for i, field in enumerate(_fields):
         ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
         c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
