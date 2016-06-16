@@ -105,7 +105,7 @@ def loadFieldData(field, subsetSize=None):
             cList = readerData.next() # Columns
             cList[0] = cList[0][2:] # Remove number sign and space
             readerPost.next() # Synchronyze readers
-            raList = []; decList = []
+            idList = []; raList = []; decList = []
             XList = []; XErrList = []; magIList = []; YList = []
             for line in readerData:
                 posterior = float(readerPost.next()[0])
@@ -118,19 +118,21 @@ def loadFieldData(field, subsetSize=None):
                         XErrList.append(XErr[0])
                         magIList.append(magI[0])
                         YList.append(posterior)
+                        idList.append(float(line[cList.index('id')]))
                         raList.append(float(line[cList.index('ra2000')]))
                         decList.append(float(line[cList.index('decl2000')]))
                     except ValueError:
                         continue
                 else:
                     continue
+    ids = np.array(idList)
     ra = np.array(raList)
     dec = np.array(decList)
     X = np.array(XList)
     XErr = np.array(XErrList)
     magI = np.array(magIList)
     Y = np.array(YList)
-    return ra, dec, X, XErr, magI, Y
+    return ids, ra, dec, X, XErr, magI, Y
 
 cgr = (-0.00816446, -0.08366937, -0.00726883)
 cri = (0.00231810,  0.01284177, -0.03068248)
@@ -271,7 +273,7 @@ def getJeffreysInterval(alpha, n, x):
     return boundL, boundU
 
 def makeTomographyField(field, subsetSize=100000, threshold=0.9, fontSize=18):
-    ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     good = np.logical_and(Y >= threshold, X[:,1] < 0.4)
     good = np.logical_and(good, X[:,2] < 0.2)
     good = np.logical_and(good, magI <= 24.0)
@@ -301,7 +303,7 @@ def precomputeTotalCount(field):
 
 def precomputeRadialCounts(field, riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=200000, threshold=0.9):
     width = (riMax - riMin)/nBins
-    ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     ri = X[:,1]
     good = np.logical_and(True, magI <= 24.0)
     good = np.logical_and(good, X[:,1] < 0.4)
@@ -440,7 +442,7 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
 
 def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18):
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0)]
-    ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
     colNames = ['g-r', 'r-i', 'i-z', 'z-y']
     colLims = [(0.0, 1.5), (-0.2, 2.0), (-0.2, 1.0), (-0.2, 0.4)]
@@ -606,7 +608,7 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     l, b = getLBPairs(dGal=20.0)
     ax.plot(l, b, color='black')
     for i, field in enumerate(_fields):
-        ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+        ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
         c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
         b = c.galactic.b.rad
         l = c.galactic.l.rad
