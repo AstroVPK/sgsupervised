@@ -118,7 +118,7 @@ def loadFieldData(field, subsetSize=None):
                         XErrList.append(XErr[0])
                         magIList.append(magI[0])
                         YList.append(posterior)
-                        idList.append(float(line[cList.index('id')]))
+                        idList.append(int(line[cList.index('id')]))
                         raList.append(float(line[cList.index('ra2000')]))
                         decList.append(float(line[cList.index('decl2000')]))
                     except ValueError:
@@ -133,6 +133,18 @@ def loadFieldData(field, subsetSize=None):
     magI = np.array(magIList)
     Y = np.array(YList)
     return ids, ra, dec, X, XErr, magI, Y
+
+def genDBPosts(field, subsetSize=None):
+    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    if os.path.isdir('/scr/depot0/garmilla/HSC'):
+        fName = '/scr/depot0/garmilla/HSC/{0}Posteriors.txt'.format(field)
+    else:
+        dirHome = os.path.expanduser('~')
+        fName = os.path.join(dirHome, 'Desktop/{0}Posteriors.txt'.format(field))
+    with open(fName, 'w') as f:
+        f.write('# id, P(Star)\n')
+        for i in range(len(ids)):
+            f.write('{0}, {1}\n'.format(ids[i], Y[i]))
 
 cgr = (-0.00816446, -0.08366937, -0.00726883)
 cri = (0.00231810,  0.01284177, -0.03068248)

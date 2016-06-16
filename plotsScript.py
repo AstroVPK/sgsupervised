@@ -2073,7 +2073,8 @@ def makeCosmosWidePlots(band='i', size=100000, fontSize=18):
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    plt.show()
+    dirHome = os.path.expanduser('~')
+    figPhot.savefig(os.path.join(dirHome, 'Desktop/cosmosWideTruth.png'), dpi=120, bbox_inches='tight')
 
 def makeCosmosWideScoresPlot(fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '-', ':']):
     _strMag = r'$\mathrm{Mag}_{cmodel}$'
@@ -2188,6 +2189,6 @@ if __name__ == '__main__':
     #peterPlot()
     #xdColExtFitScores()
     #xdColExtSvmScores(trainSvm=True)
-    #makeCosmosWidePlots()
+    makeCosmosWidePlots()
     #makeCosmosWideScoresPlot()
-    cosmosWideSvmScores()
+    #cosmosWideSvmScores()
