@@ -384,7 +384,7 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
             binMax = binMin + width
             axes[j].set_title('{0} < r-i < {1}'.format(binMin, binMax), fontsize=fontSize)
             axes[j].set_xlabel('r (kpc)', fontsize=fontSize)
-            axes[j].set_ylabel(r'counts ($\mathrm{kpc}^{-1}\mathrm{arcsecond}^{-2}$)', fontsize=fontSize)
+            axes[j].set_ylabel(r'counts ($\mathrm{kpc}^{-1}\mathrm{deg}^{-2}$)', fontsize=fontSize)
             counts = data[j+1,:]
             areaFactor = 100.0*totalCounts[field]/totalCount
             correction = np.zeros((nBinsD,))
