@@ -602,7 +602,7 @@ def _getFb(a=0.064, b=0.970, c=0.233, d=0.776, dGal=10.0, l=0.0):
         return 1.0/np.cos(bGal)*(-c*np.sin(bGal) - d/dGal) - lhs
     return F
 
-def getLBPairs(dGal=10.0):
+def getLBPairsSg(dGal=10.0):
     l = np.linspace(-np.pi, np.pi, num=100)
     b = np.zeros(l.shape)
     for i in range(len(l)):
@@ -611,22 +611,56 @@ def getLBPairs(dGal=10.0):
         b[i] = brentq(F, brentMin, brentMax)
     return l, b
 
-def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
+def getLBPairsOrphan():
+    phi = 128.79*np.pi/180
+    theta = 54.39*np.pi/180
+    chi = 90.70*np.pi/180
+    cosP = np.cos(phi); sinP = np.sin(phi)
+    cosT = np.cos(theta); sinT = np.sin(theta)
+    cosC = np.cos(chi); sinC = np.sin(chi)
+    M = np.array([[cosC*cosP-cosT*sinP*sinC, cosC*sinP+cosT*cosP*sinC, sinC*sinT],
+                  [-sinC*cosP-cosT*sinP*cosC, -sinC*sinP+cosT*cosP*cosC, cosC*sinT],
+                  [sinT*sinP, -sinT*cosP, cosT]])
+    from numpy.linalg import inv
+    MInv = inv(M)
+    Ls = np.linspace(-np.pi, np.pi, num=100)
+    l = np.zeros(Ls.shape)
+    b = np.zeros(Ls.shape)
+    for i in range(len(Ls)):
+        vec = np.array([np.cos(Ls[i]), np.sin(Ls[i]), 0.0])
+        vecGal = np.dot(MInv, vec)
+        assert np.abs(vecGal[2]) <= 1.0
+        b[i] = np.arcsin(vecGal[2])
+        try:
+            assert np.abs(vecGal[0]/np.cos(b[i])) <= 1.0
+            assert np.abs(vecGal[1]/np.cos(b[i])) <= 1.0
+            assert np.allclose(np.square(vecGal[1]/np.cos(b[i])) + np.square(vecGal[0]/np.cos(b[i])), 1.0)
+        except AssertionError:
+            import ipdb; ipdb.set_trace()
+        if vecGal[1]/np.cos(b[i]) >= 0.0:
+            l[i] = np.arccos(vecGal[0]/np.cos(b[i]))
+        else:
+            l[i] = - np.arccos(vecGal[0]/np.cos(b[i]))
+    return l, b
+
+def makeWideGallacticProjection(subsetSize=100, fontSize=16):
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(111, projection='mollweide')
     ax.grid()
-    l, b = getLBPairs(dGal=5.0)
+    l, b = getLBPairsSg(dGal=5.0)
     ax.plot(l, b, color='black')
-    l, b = getLBPairs(dGal=20.0)
+    l, b = getLBPairsSg(dGal=20.0)
     ax.plot(l, b, color='black')
-    for i, field in enumerate(_fields):
-        ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
-        c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
-        b = c.galactic.b.rad
-        l = c.galactic.l.rad
-        gtr = np.logical_and(True, l > np.pi)
-        l[gtr] = l[gtr] - 2*np.pi
-        ax.scatter(l, b, marker='.', s=1, color=_colors[i], edgecolor="none")
+    l, b = getLBPairsOrphan()
+    ax.plot(l, b, color='black')
+    #for i, field in enumerate(_fields):
+    #    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    #    c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
+    #    b = c.galactic.b.rad
+    #    l = c.galactic.l.rad
+    #    gtr = np.logical_and(True, l > np.pi)
+    #    l[gtr] = l[gtr] - 2*np.pi
+    #    ax.scatter(l, b, marker='.', s=1, color=_colors[i], edgecolor="none")
     ax.set_xlabel('l', fontsize=fontSize)
     ax.set_ylabel('b', fontsize=fontSize)
     ax.set_title('HSC Wide January 2016', fontsize=fontSize)
@@ -643,8 +677,9 @@ if __name__ == '__main__':
     #field = 'VVDS'
     #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
+    makeWideGallacticProjection()
     #makeTomographyCBins()
-    genDBPosts('WIDE12H')
+    #genDBPosts('WIDE12H')
     #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
