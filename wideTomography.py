@@ -643,7 +643,8 @@ if __name__ == '__main__':
     #field = 'VVDS'
     #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
-    makeTomographyCBins()
+    #makeTomographyCBins()
+    genDBPosts('WIDE12H')
     #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
