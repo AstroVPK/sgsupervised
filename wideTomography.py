@@ -641,9 +641,17 @@ def getLBPairsOrphan():
             l[i] = np.arccos(vecGal[0]/np.cos(b[i]))
         else:
             l[i] = - np.arccos(vecGal[0]/np.cos(b[i]))
-    return l, b
+    return l[l.argsort()], b[l.argsort()]
 
-def makeWideGallacticProjection(subsetSize=100, fontSize=16):
+def getLBPairsPal5(radec0=(226.5, -3.0), radec1=(234.0, 3.5)):
+    ras = np.linspace(radec0[0], radec1[0], num=100)
+    decs = radec0[1] + (ras - radec0[0])*(radec1[1] - radec0[1])/(radec1[0] - radec0[0])
+    c = SkyCoord(ra=ras, dec=decs, frame='icrs', unit='deg')
+    b = c.galactic.b.rad
+    l = c.galactic.l.rad
+    return l[l.argsort()], b[l.argsort()]
+
+def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(111, projection='mollweide')
     ax.grid()
@@ -652,6 +660,8 @@ def makeWideGallacticProjection(subsetSize=100, fontSize=16):
     l, b = getLBPairsSg(dGal=20.0)
     ax.plot(l, b, color='black')
     l, b = getLBPairsOrphan()
+    ax.plot(l, b, color='black')
+    l, b = getLBPairsPal5()
     ax.plot(l, b, color='black')
     #for i, field in enumerate(_fields):
     #    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
