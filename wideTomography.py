@@ -3,6 +3,7 @@ import csv
 import pickle
 
 import numpy as np
+from numpy.linalg import inv
 from scipy.stats import beta, poisson
 #import matplotlib as mpl
 #mpl.use('Agg')
@@ -621,7 +622,6 @@ def getLBPairsOrphan():
     M = np.array([[cosC*cosP-cosT*sinP*sinC, cosC*sinP+cosT*cosP*sinC, sinC*sinT],
                   [-sinC*cosP-cosT*sinP*cosC, -sinC*sinP+cosT*cosP*cosC, cosC*sinT],
                   [sinT*sinP, -sinT*cosP, cosT]])
-    from numpy.linalg import inv
     MInv = inv(M)
     Ls = np.linspace(-np.pi, np.pi, num=100)
     l = np.zeros(Ls.shape)
@@ -643,12 +643,63 @@ def getLBPairsOrphan():
             l[i] = - np.arccos(vecGal[0]/np.cos(b[i]))
     return l[l.argsort()], b[l.argsort()]
 
+def getLBPairsGD1():
+    M = np.array([[-0.4776303088, -0.1738432154, 0.8611897727],
+                  [0.510844589, -0.8524449229, 0.111245042],
+                  [0.7147776536, 0.4930681392, 0.4959603976]])
+    MInv = inv(M)
+    phi1 = np.linspace(-60.0*np.pi/180, 0.0, num=10)
+    alpha = np.zeros(phi1.shape)
+    delta = np.zeros(phi1.shape)
+    for i in range(len(phi1)):
+        vec = np.array([np.cos(phi1[i]), np.sin(phi1[i]), 0.0])
+        vecGal = np.dot(MInv, vec)
+        assert np.abs(vecGal[2]) <= 1.0
+        delta[i] = np.arcsin(vecGal[2])
+        try:
+            assert np.abs(vecGal[0]/np.cos(delta[i])) <= 1.0
+            assert np.abs(vecGal[1]/np.cos(delta[i])) <= 1.0
+            assert np.allclose(np.square(vecGal[1]/np.cos(delta[i])) + np.square(vecGal[0]/np.cos(delta[i])), 1.0)
+        except AssertionError:
+            import ipdb; ipdb.set_trace()
+        if vecGal[1]/np.cos(delta[i]) >= 0.0:
+            alpha[i] = np.arccos(vecGal[0]/np.cos(delta[i]))
+        else:
+            alpha[i] = 2*np.pi - np.arccos(vecGal[0]/np.cos(delta[i]))
+    c = SkyCoord(ra=alpha, dec=delta, frame='icrs', unit='deg')
+    b = c.galactic.b.rad
+    l = c.galactic.l.rad
+    return l[l.argsort()], b[l.argsort()]
+
 def getLBPairsPal5(radec0=(226.5, -3.0), radec1=(234.0, 3.5)):
     ras = np.linspace(radec0[0], 234.0, num=5)
     decs = radec0[1] + (ras - radec0[0])*(radec1[1] - radec0[1])/(radec1[0] - radec0[0])
     c = SkyCoord(ra=ras, dec=decs, frame='icrs', unit='deg')
     b = c.galactic.b.rad
     l = c.galactic.l.rad
+    return l[l.argsort()], b[l.argsort()]
+
+def getLBPairsMClouds():
+    raSmall = '00h52m44.8s'
+    decSmall = '-72d49m43s'
+    c = SkyCoord(ra=raSmall, dec=decSmall, frame='icrs')
+    bSmall = c.galactic.b.rad
+    lSmall = c.galactic.l.rad - 2*np.pi
+    raLarge = '05h23m34.5s'
+    decLarge = '-69d45m22s'
+    c = SkyCoord(ra=raLarge, dec=decLarge, frame='icrs')
+    bLarge = c.galactic.b.rad
+    lLarge = c.galactic.l.rad - 2*np.pi
+    return [lSmall, lLarge], [bSmall, bLarge]
+
+def getLBPairsCEquator():
+    ras = np.linspace(0.0, 360.0, num=100)
+    decs = np.zeros(ras.shape)
+    c = SkyCoord(ra=ras, dec=decs, frame='icrs', unit='deg')
+    b = c.galactic.b.rad
+    l = c.galactic.l.rad
+    gtr = np.logical_not(l < np.pi)
+    l[gtr] = l[gtr] - 2*np.pi
     return l[l.argsort()], b[l.argsort()]
 
 def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
@@ -663,6 +714,13 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     ax.plot(l, b, color='black')
     l, b = getLBPairsPal5()
     ax.scatter(l, b, color='black', marker='x')
+    l, b = getLBPairsGD1()
+    #ax.scatter(l, b, color='black', marker='x')
+    ax.plot(l, b, color='black')
+    l, b = getLBPairsMClouds()
+    ax.scatter(l, b, color='black', marker='x')
+    l, b = getLBPairsCEquator()
+    ax.plot(l, b, color='black', linestyle=':')
     #for i, field in enumerate(_fields):
     #    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     #    c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
@@ -687,9 +745,9 @@ if __name__ == '__main__':
     #field = 'VVDS'
     #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
-    makeWideGallacticProjection()
+    #makeWideGallacticProjection()
     #makeTomographyCBins()
-    #genDBPosts('WIDE12H')
+    genDBPosts('XMM')
     #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
