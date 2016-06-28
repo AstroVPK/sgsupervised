@@ -5,8 +5,8 @@ import pickle
 import numpy as np
 from numpy.linalg import inv
 from scipy.stats import beta, poisson
-#import matplotlib as mpl
-#mpl.use('Agg')
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 from astropy import units
@@ -134,6 +134,11 @@ def loadFieldData(field, subsetSize=None):
     magI = np.array(magIList)
     Y = np.array(YList)
     return ids, ra, dec, X, XErr, magI, Y
+
+def preLoadField(field, subsetSize=None):
+    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    with open('/scr/depot0/garmilla/HSC/data{0}.pkl'.format(field), 'w') as f:
+        pickle.dump((ids, ra, dec, X, XErr, magI, Y), f)
 
 def genDBPosts(field, subsetSize=None):
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
@@ -485,12 +490,32 @@ def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
 
-def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18):
+def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, cCut=None, mCut=None):
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
+    good = False
+    if cCut is not None:
+        idx = cCut[0]; low = cCut[1]; high = cCut[2]
+        goodC = np.logical_and(X[:,idx] > low, X[:,idx] < high)
+        if mCut is None:
+            good = goodC
+    if mCut is not None:
+        goodM = np.logical_and(magI > mCut[0], magI < mCut[1])
+        if cCut is None:
+            good = goodM
+        else:
+            good = np.logical_and(goodC, goodM)
+    stellarGood = np.logical_and(good, stellar)
+    stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(1, 1, 1)
-    ax.scatter(X[:,1][stellar], magI[stellar], marker='.', s=1)
+    ax.scatter(X[:,1][stellarGood], magI[stellarGood], marker='.', s=1, color='red')
+    ax.scatter(X[:,1][stellarBad], magI[stellarBad], marker='.', s=1, color='black')
+    if cCut is not None and mCut is not None:
+        ax.plot([cCut[1], cCut[1]], [mCut[0], mCut[1]], color='black')
+        ax.plot([cCut[1], cCut[2]], [mCut[0], mCut[0]], color='black')
+        ax.plot([cCut[1], cCut[2]], [mCut[1], mCut[1]], color='black')
+        ax.plot([cCut[2], cCut[2]], [mCut[0], mCut[1]], color='black')
     ax.set_xlim((-0.1, 0.4))
     ax.set_ylim((18.0, 25.0))
     ax.set_xlabel(r'$r-i$', fontsize=fontSize)
@@ -499,12 +524,27 @@ def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/cmDiagram{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
-def makeRaDecDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18):
+def makeRaDecDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, cCut=None, mCut=None):
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
+    good = False
+    if cCut is not None:
+        idx = cCut[0]; low = cCut[1]; high = cCut[2]
+        goodC = np.logical_and(X[:,idx] > low, X[:,idx] < high)
+        if mCut is None:
+            good = goodC
+    if mCut is not None:
+        goodM = np.logical_and(magI > mCut[0], magI < mCut[1])
+        if cCut is None:
+            good = goodM
+        else:
+            good = np.logical_and(goodC, goodM)
+    stellarGood = np.logical_and(good, stellar)
+    stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(1, 1, 1)
-    ax.scatter(ra[stellar], dec[stellar], marker='.', s=1)
+    ax.scatter(ra[stellarGood], dec[stellarGood], marker='.', s=1, color='red')
+    ax.scatter(ra[stellarBad], dec[stellarBad], marker='.', s=1, color='black')
     ax.set_xlabel('RA', fontsize=fontSize)
     ax.set_ylabel('Dec', fontsize=fontSize)
     ax.set_title('{0}'.format(field))
@@ -773,7 +813,8 @@ if __name__ == '__main__':
     #makeCCDiagrams(field)
     #makeWideGallacticProjection()
     #makeTomographyCBins()
-    genDBPosts('XMM')
+    #genDBPosts('HectoMap')
+    preLoadField('XMM')
     #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
