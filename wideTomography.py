@@ -768,33 +768,38 @@ def getLBPairsCEquator():
     l[gtr] = l[gtr] - 2*np.pi
     return l[l.argsort()], b[l.argsort()]
 
+def getLBPairsVirgo():
+   return 307.0569048*np.pi/180 - 2*np.pi, 58.80315487*np.pi/180
+
 def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(111, projection='mollweide')
     ax.grid()
     l, b = getLBPairsSg(dGal=5.0)
-    ax.plot(l, b, color='black')
+    ax.plot(l, b, color='black', linestyle='--')
     l, b = getLBPairsSg(dGal=20.0)
-    ax.plot(l, b, color='black')
+    ax.plot(l, b, color='black', linestyle='--')
     l, b = getLBPairsOrphan()
-    ax.plot(l, b, color='black')
+    ax.plot(l, b, color='red', linestyle='--')
     l, b = getLBPairsPal5()
     ax.scatter(l, b, color='black', marker='x')
     l, b = getLBPairsGD1()
-    #ax.scatter(l, b, color='black', marker='x')
-    ax.plot(l, b, color='black')
+    ax.scatter(l, b, color='black', marker='+')
+    #ax.plot(l, b, color='black')
+    l, b = getLBPairsVirgo()
+    ax.scatter(l, b, color='black', marker='v')
     l, b = getLBPairsMClouds()
-    ax.scatter(l, b, color='black', marker='x')
+    ax.scatter(l, b, color='black', marker='o')
     l, b = getLBPairsCEquator()
-    ax.plot(l, b, color='black', linestyle=':')
-    #for i, field in enumerate(_fields):
-    #    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
-    #    c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
-    #    b = c.galactic.b.rad
-    #    l = c.galactic.l.rad
-    #    gtr = np.logical_and(True, l > np.pi)
-    #    l[gtr] = l[gtr] - 2*np.pi
-    #    ax.scatter(l, b, marker='.', s=1, color=_colors[i], edgecolor="none")
+    ax.plot(l, b, color='black', linestyle='-')
+    for i, field in enumerate(_fields):
+        ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+        c = SkyCoord(ra=ra*units.degree, dec=dec*units.degree, frame='icrs')
+        b = c.galactic.b.rad
+        l = c.galactic.l.rad
+        gtr = np.logical_and(True, l > np.pi)
+        l[gtr] = l[gtr] - 2*np.pi
+        ax.scatter(l, b, marker='.', s=1, color=_colors[i], edgecolor="none")
     ax.set_xlabel('l', fontsize=fontSize)
     ax.set_ylabel('b', fontsize=fontSize)
     ax.set_title('HSC Wide January 2016', fontsize=fontSize)
@@ -811,10 +816,10 @@ if __name__ == '__main__':
     #field = 'VVDS'
     #computeFieldPosteriors(field)
     #makeCCDiagrams(field)
-    #makeWideGallacticProjection()
+    makeWideGallacticProjection()
     #makeTomographyCBins()
     #genDBPosts('HectoMap')
-    preLoadField('XMM')
+    #preLoadField('XMM')
     #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
