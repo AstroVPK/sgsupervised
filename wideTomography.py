@@ -3,10 +3,11 @@ import csv
 import pickle
 
 import numpy as np
+import pandas as pd
 from numpy.linalg import inv
 from scipy.stats import beta, poisson
-import matplotlib as mpl
-mpl.use('Agg')
+#import matplotlib as mpl
+#mpl.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 from astropy import units
@@ -99,40 +100,47 @@ def loadFieldData(field, subsetSize=None):
     if subsetSize is None:
         subsetSize = fileLen(fNamePost) - 1
     subset = selectFieldSubset(fNamePost, subsetSize)
-    with open(fNameData, 'r') as fData:
-        with open(fNamePost, 'r') as fPost:
-            readerData = csv.reader(fData, delimiter=',')
-            readerPost = csv.reader(fPost, delimiter=',')
-            cList = readerData.next() # Columns
-            cList[0] = cList[0][2:] # Remove number sign and space
-            readerPost.next() # Synchronyze readers
-            idList = []; raList = []; decList = []
-            XList = []; XErrList = []; magIList = []; YList = []
-            for line in readerData:
-                posterior = float(readerPost.next()[0])
-                assert readerPost.line_num == readerData.line_num
-                idx = readerData.line_num - 2
-                if idx in subset:
-                    try:
-                        X, XErr, magI = getXFromLine(line, cList)
-                        XList.append(X[0])
-                        XErrList.append(XErr[0])
-                        magIList.append(magI[0])
-                        YList.append(posterior)
-                        idList.append(int(line[cList.index('id')]))
-                        raList.append(float(line[cList.index('ra2000')]))
-                        decList.append(float(line[cList.index('decl2000')]))
-                    except ValueError:
-                        continue
-                else:
-                    continue
-    ids = np.array(idList)
-    ra = np.array(raList)
-    dec = np.array(decList)
-    X = np.array(XList)
-    XErr = np.array(XErrList)
-    magI = np.array(magIList)
-    Y = np.array(YList)
+    dfData = pd.read_csv(fNameData)
+    dfPost = pd.read_csv(fNamePost)
+    ids = dfData['# id'].values[subset]
+    ra = dfData['ra2000'].values[subset]
+    dec = dfData['decl2000'].values[subset]
+    magI = dfData['imag'].values[subset]
+    Y = dfPost['# P(Star)'].values[subset]
+    X = np.zeros((len(subset), 5))
+    XErr = np.zeros((len(subset), 5, 5))
+    X[:,0] = dfData['gmag'].values[subset] - dfData['rmag'].values[subset]
+    X[:,1] = dfData['rmag'].values[subset] - dfData['imag'].values[subset]
+    X[:,2] = dfData['imag'].values[subset] - dfData['zmag'].values[subset]
+    X[:,3] = dfData['zmag'].values[subset] - dfData['ymag'].values[subset]
+    errG = dfData['gmag_cmodel_err'].values[subset]
+    errR = dfData['rmag_cmodel_err'].values[subset]
+    errI = dfData['imag_cmodel_err'].values[subset]
+    errZ = dfData['zmag_cmodel_err'].values[subset]
+    errY = dfData['ymag_cmodel_err'].values[subset]
+    errs = np.vstack((errG, errR, errI, errZ, errY))
+    idxBest = np.argmin(errs, axis=0)
+    idxArr = np.arange(len(errG))
+    errBest = errs[idxBest, idxArr]
+    extG = dfData['gext'].values[subset]
+    extR = dfData['rext'].values[subset]
+    extI = dfData['iext'].values[subset]
+    extZ = dfData['zext'].values[subset]
+    extY = dfData['yext'].values[subset]
+    exts = np.vstack((errG, errR, errI, errZ, errY))
+    exts = exts[idxBest, idxArr]
+    X[:,4] = exts
+    XErr[:, 0, 0] = errG**2 + errR**2
+    XErr[:, 0, 1] = -errR**2
+    XErr[:, 1, 0] = -errR**2
+    XErr[:, 1, 1] = errR**2 + errI**2
+    XErr[:, 1, 2] = -errI**2
+    XErr[:, 2, 1] = -errI**2
+    XErr[:, 2, 2] = errI**2 + errZ**2
+    XErr[:, 2, 3] = -errZ**2
+    XErr[:, 3, 2] = -errZ**2
+    XErr[:, 3, 3] = errZ**2 + errY**2
+    XErr[:, 4, 4] = errBest**2
     return ids, ra, dec, X, XErr, magI, Y
 
 def preLoadField(field, subsetSize=None):
@@ -490,32 +498,83 @@ def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
 
-def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, cCut=None, mCut=None):
+def _getParabolaParams(xy0, xy1, xy2):
+    assert len(xy0) == 2
+    assert len(xy1) == 2
+    assert len(xy2) == 2
+    M = np.array([[xy0[0]**2, xy0[0], 1.0],
+                  [xy1[0]**2, xy1[0], 1.0],
+                  [xy2[0]**2, xy2[0], 1.0]])
+    MInv = inv(M)
+    vecY = np.array([xy0[1], xy1[1], xy2[1]])
+    vecParams = np.dot(MInv, vecY)
+    return vecParams[0], vecParams[1], vecParams[2]
+
+def _buildFilterFuncs(xy0H, xy1H, xy2H, xyF0H, xyF1H,
+                      xy0L, xy1L, xy2L, xyF0L, xyF1L):
+    assert len(xy0H) == 2
+    assert len(xy1H) == 2
+    assert len(xy2H) == 2
+    assert len(xyF0H) == 2
+    assert len(xyF1H) == 2
+    assert xyF1H[0] == xy0H[0]
+    assert xyF1H[1] == xyF0H[1]
+    assert xyF0H[0] == xy0L[0]
+    assert xyF0H[1] == xy0L[1]
+    assert xy2H[0] == xyF1L[0]
+    assert xy2H[1] == xyF1L[1]
+    AH, BH, CH = _getParabolaParams(xy0H, xy1H, xy2H)
+    def FH(x):
+        y = np.zeros(x.shape)
+        inFlat = np.logical_and(x >= xyF0H[0], x <= xyF1H[0])
+        y[inFlat] = xyF0H[1]
+        inPb = np.logical_and(x > xy0H[0], x <= xy2H[0])
+        y[inPb] = AH*x[inPb]**2 + BH*x[inPb] + CH
+        other = np.logical_and(np.logical_not(inFlat), np.logical_not(inPb))
+        y[other] = xyF0L[1] - 1.0
+        return y
+    assert len(xy0L) == 2
+    assert len(xy1L) == 2
+    assert len(xy2L) == 2
+    assert len(xyF0L) == 2
+    assert len(xyF1L) == 2
+    assert xyF0L[0] == xy2L[0]
+    assert xyF1L[1] == xyF0L[1]
+    AL, BL, CL = _getParabolaParams(xy0L, xy1L, xy2L)
+    def FL(x):
+        y = np.zeros(x.shape)
+        inPb = np.logical_and(x >= xy0L[0], x < xy2L[0])
+        y[inPb] = AL*x[inPb]**2 + BL*x[inPb] + CL
+        inFlat = np.logical_and(x >= xyF0L[0], x <= xyF1L[0])
+        y[inFlat] = xyF0L[1]
+        other = np.logical_and(np.logical_not(inFlat), np.logical_not(inPb))
+        y[other] = xyF0L[1] - 1.0
+        return y
+    xDomain = (xyF0H[0], xy2H[0])
+    return xDomain, FL, FH
+
+def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterArgs=None):
+    if field == 'XMM':
+        filterArgs =((0.1, 20.0), (0.25, 23.3), (0.4, 24.0), (0.0, 20.0), (0.1, 20.0),
+                     (0.0, 20.0), (0.15, 23.0), (0.25, 24.0), (0.25, 24.0), (0.4, 24.0))
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
     good = False
-    if cCut is not None:
-        idx = cCut[0]; low = cCut[1]; high = cCut[2]
-        goodC = np.logical_and(X[:,idx] > low, X[:,idx] < high)
-        if mCut is None:
-            good = goodC
-    if mCut is not None:
-        goodM = np.logical_and(magI > mCut[0], magI < mCut[1])
-        if cCut is None:
-            good = goodM
-        else:
-            good = np.logical_and(goodC, goodM)
+    if filterArgs is not None:
+        xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
+        inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
+        good = np.logical_and(magI >= FL(X[:,1]), magI <= FH(X[:,1]))
+        good = np.logical_and(good, inDomain)
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(1, 1, 1)
     ax.scatter(X[:,1][stellarGood], magI[stellarGood], marker='.', s=1, color='red')
     ax.scatter(X[:,1][stellarBad], magI[stellarBad], marker='.', s=1, color='black')
-    if cCut is not None and mCut is not None:
-        ax.plot([cCut[1], cCut[1]], [mCut[0], mCut[1]], color='black')
-        ax.plot([cCut[1], cCut[2]], [mCut[0], mCut[0]], color='black')
-        ax.plot([cCut[1], cCut[2]], [mCut[1], mCut[1]], color='black')
-        ax.plot([cCut[2], cCut[2]], [mCut[0], mCut[1]], color='black')
+    if filterArgs is not None:
+        x = np.linspace(xDomain[0], xDomain[1], num=100)
+        ax.plot(x, FL(x), color='black')
+        ax.plot(x, FH(x), color='black')
     ax.set_xlim((-0.1, 0.4))
     ax.set_ylim((18.0, 25.0))
     ax.set_xlabel(r'$r-i$', fontsize=fontSize)
@@ -656,6 +715,31 @@ def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, comput
     with open('completeness.pkl', 'w') as f:
         pickle.dump(dataC, f)
     return fig
+
+def cosmosWideSeeingDistrib(band='HSC-I', fontSize=18):
+    _reruns = ['Best', 'Median', 'Worst']
+    fig = plt.figure(figsize=(24, 6), dpi=120)
+    bins = np.linspace(0.47, 1.16, num=50)
+    for axNum, r in enumerate(_reruns):
+        df = pd.read_csv('/scr/depot0/garmilla/HSC/wide{0}Psf.csv'.format(r))
+        rtr = []
+        for i in range(df.shape[0]):
+            if df[df.columns[1]][i] == band:
+                quad = np.fromstring(df[df.columns[3]][i][1:-1], dtype=float, sep=',')
+                rtr.append(np.sqrt(0.5*(quad[0] + quad[1]))*0.17*2.35)
+        rtr = np.array(rtr)
+        ax = fig.add_subplot(1, 3, axNum+1)
+        ax.hist(rtr, bins=bins, histtype='step', normed=True, color='black')
+        ax.set_title('{0} Seeing {1}'.format(r, band), fontsize=fontSize)
+        ax.set_xlabel('FWHM (arcseconds)', fontsize=fontSize)
+        ax.set_ylabel('Normalized Histogram', fontsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+    dirHome = os.path.expanduser('~')
+    fig.savefig(os.path.join(dirHome, 'Desktop/wideCosmosSeeing.png'), dpi=120, bbox_inches='tight')
 
 def _getFl(a=0.064, b=0.970, c=0.233, d=0.776, dGal=10.0, bGal=0.0):
     rhs = 1.0/np.cos(bGal)*(-c*np.sin(bGal) - d/dGal)
