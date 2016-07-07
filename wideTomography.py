@@ -498,72 +498,76 @@ def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18):
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/wide{0}PstarG{1}.png'.format(field, threshold)), dpi=120, bbox_inches='tight')
 
-def _getParabolaParams(xy0, xy1, xy2):
+def _getPolyParams(xy0, xy1, xy2, xy3):
     assert len(xy0) == 2
     assert len(xy1) == 2
     assert len(xy2) == 2
-    M = np.array([[xy0[0]**2, xy0[0], 1.0],
-                  [xy1[0]**2, xy1[0], 1.0],
-                  [xy2[0]**2, xy2[0], 1.0]])
+    assert len(xy3) == 2
+    M = np.array([[xy0[0]**3, xy0[0]**2, xy0[0], 1.0],
+                  [xy1[0]**3, xy1[0]**2, xy1[0], 1.0],
+                  [xy2[0]**3, xy2[0]**2, xy2[0], 1.0],
+                  [xy3[0]**3, xy3[0]**2, xy3[0], 1.0]])
     MInv = inv(M)
-    vecY = np.array([xy0[1], xy1[1], xy2[1]])
+    vecY = np.array([xy0[1], xy1[1], xy2[1], xy3[1]])
     vecParams = np.dot(MInv, vecY)
-    return vecParams[0], vecParams[1], vecParams[2]
+    return vecParams[0], vecParams[1], vecParams[2], vecParams[3]
 
-def _buildFilterFuncs(xy0H, xy1H, xy2H, xyF0H, xyF1H,
-                      xy0L, xy1L, xy2L, xyF0L, xyF1L):
+def _buildFilterFuncs(xy0H, xy1H, xy2H, xy3H, xyF0H, xyF1H,
+                      xy0L, xy1L, xy2L, xy3L, xyF0L, xyF1L):
     assert len(xy0H) == 2
     assert len(xy1H) == 2
     assert len(xy2H) == 2
+    assert len(xy3H) == 2
     assert len(xyF0H) == 2
     assert len(xyF1H) == 2
-    assert xyF1H[0] == xy0H[0]
-    assert xyF1H[1] == xyF0H[1]
-    assert xyF0H[0] == xy0L[0]
-    assert xyF0H[1] == xy0L[1]
-    assert xy2H[0] == xyF1L[0]
-    assert xy2H[1] == xyF1L[1]
-    AH, BH, CH = _getParabolaParams(xy0H, xy1H, xy2H)
+    #assert xyF1H[0] == xy0H[0]
+    #assert xyF1H[1] == xyF0H[1]
+    #assert xyF0H[0] == xy0L[0]
+    #assert xyF0H[1] == xy0L[1]
+    #assert xy2H[0] == xyF1L[0]
+    #assert xy2H[1] == xyF1L[1]
+    AH, BH, CH, DH = _getPolyParams(xy0H, xy1H, xy2H, xy3H)
     def FH(x):
         y = np.zeros(x.shape)
         inFlat = np.logical_and(x >= xyF0H[0], x <= xyF1H[0])
         y[inFlat] = xyF0H[1]
-        inPb = np.logical_and(x > xy0H[0], x <= xy2H[0])
-        y[inPb] = AH*x[inPb]**2 + BH*x[inPb] + CH
+        inPb = np.logical_and(x > xy0H[0], x <= xy3H[0])
+        y[inPb] = AH*x[inPb]**3 + BH*x[inPb]**2 + CH*x[inPb] + DH
         other = np.logical_and(np.logical_not(inFlat), np.logical_not(inPb))
         y[other] = xyF0L[1] - 1.0
         return y
     assert len(xy0L) == 2
     assert len(xy1L) == 2
     assert len(xy2L) == 2
+    assert len(xy3L) == 2
     assert len(xyF0L) == 2
     assert len(xyF1L) == 2
-    assert xyF0L[0] == xy2L[0]
-    assert xyF1L[1] == xyF0L[1]
-    AL, BL, CL = _getParabolaParams(xy0L, xy1L, xy2L)
+    #assert xyF0L[0] == xy2L[0]
+    #assert xyF1L[1] == xyF0L[1]
+    AL, BL, CL, DL = _getPolyParams(xy0L, xy1L, xy2L, xy3L)
     def FL(x):
         y = np.zeros(x.shape)
-        inPb = np.logical_and(x >= xy0L[0], x < xy2L[0])
-        y[inPb] = AL*x[inPb]**2 + BL*x[inPb] + CL
+        inPb = np.logical_and(x >= xy0L[0], x < xy3L[0])
+        y[inPb] = AL*x[inPb]**3 + BL*x[inPb]**2 + CL*x[inPb] + DL
         inFlat = np.logical_and(x >= xyF0L[0], x <= xyF1L[0])
         y[inFlat] = xyF0L[1]
         other = np.logical_and(np.logical_not(inFlat), np.logical_not(inPb))
         y[other] = xyF0L[1] - 1.0
         return y
-    xDomain = (xyF0H[0], xy2H[0])
+    xDomain = (xyF0H[0], xy3H[0])
     return xDomain, FL, FH
 
 def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterArgs=None):
     if field == 'XMM':
-        filterArgs =((0.1, 20.0), (0.25, 23.3), (0.4, 24.0), (0.0, 20.0), (0.1, 20.0),
-                     (0.0, 20.0), (0.15, 23.0), (0.25, 24.0), (0.25, 24.0), (0.4, 24.0))
+        filterArgs =((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0), (0.1, 20.0),
+                     (0.0, 20.0), (0.1, 23.0), (0.2, 24.2), (0.4, 24.2), (0.4, 24.2), (0.4, 24.2))
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
     good = False
     if filterArgs is not None:
         xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
         inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
-        good = np.logical_and(magI >= FL(X[:,1]), magI <= FH(X[:,1]))
+        good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
         good = np.logical_and(good, inDomain)
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
@@ -583,21 +587,18 @@ def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterAr
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/cmDiagram{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
-def makeRaDecDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, cCut=None, mCut=None):
+def makeRaDecDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterArgs=None):
+    if field == 'XMM':
+        filterArgs =((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0), (0.1, 20.0),
+                     (0.0, 20.0), (0.1, 23.0), (0.2, 24.2), (0.4, 24.2), (0.4, 24.2), (0.4, 24.2))
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
     good = False
-    if cCut is not None:
-        idx = cCut[0]; low = cCut[1]; high = cCut[2]
-        goodC = np.logical_and(X[:,idx] > low, X[:,idx] < high)
-        if mCut is None:
-            good = goodC
-    if mCut is not None:
-        goodM = np.logical_and(magI > mCut[0], magI < mCut[1])
-        if cCut is None:
-            good = goodM
-        else:
-            good = np.logical_and(goodC, goodM)
+    if filterArgs is not None:
+        xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
+        inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
+        good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
+        good = np.logical_and(good, inDomain)
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
