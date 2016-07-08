@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 from astropy import units
 from astropy.coordinates import SkyCoord
+from sklearn.neighbors.kde import KernelDensity
 
 import dGauss
 
@@ -557,10 +558,20 @@ def _buildFilterFuncs(xy0H, xy1H, xy2H, xy3H, xyF0H, xyF1H,
     xDomain = (xyF0H[0], xy3H[0])
     return xDomain, FL, FH
 
-def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterArgs=None):
-    if field == 'XMM':
-        filterArgs =((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0), (0.1, 20.0),
-                     (0.0, 20.0), (0.1, 23.0), (0.2, 24.2), (0.4, 24.2), (0.4, 24.2), (0.4, 24.2))
+_filterArgsXMM = ((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0), (0.1, 20.0),
+                 (0.0, 20.0), (0.1, 23.0), (0.2, 24.2), (0.4, 24.2), (0.4, 24.2), (0.4, 24.2))
+_filterArgsGAMA15 = ((0.1, 21.8), (0.13, 22.8), (0.16, 23.5), (0.2, 23.8), (0.0, 21.8), (0.1, 21.8),
+                    (0.0, 21.8), (0.3, 23.5), (0.6, 24.0), (0.13, 24.2), (0.13, 24.2), (0.2, 24.2))
+
+def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterArgs=None, noFilter=False,
+                  raDecCut=None):
+    if filterArgs is not None and raDecCut is not None:
+        raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
+    if not noFilter and raDecCut is None:
+        if field == 'XMM':
+            filterArgs = _filterArgsXMM
+        if field == 'GAMA15':
+            filterArgs = _filterArgsGAMA15
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
     good = False
@@ -569,6 +580,12 @@ def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterAr
         inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
         good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
         good = np.logical_and(good, inDomain)
+    elif raDecCut is not None:
+        assert isinstance(raDecCut, dict):
+        raRange = raDecCut['ra']
+        decRange = raDecCut['dec']
+        good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
+                              np.logical_and(dec > decRange[0], dec < decRange[1])
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
@@ -579,18 +596,24 @@ def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterAr
         x = np.linspace(xDomain[0], xDomain[1], num=100)
         ax.plot(x, FL(x), color='black')
         ax.plot(x, FH(x), color='black')
+        ax.plot([x[-1], x[-1]], [FH(x)[-1], FL(x)[-1]], color='black')
     ax.set_xlim((-0.1, 0.4))
     ax.set_ylim((18.0, 25.0))
     ax.set_xlabel(r'$r-i$', fontsize=fontSize)
     ax.set_ylabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
     ax.invert_yaxis()
     dirHome = os.path.expanduser('~')
-    fig.savefig(os.path.join(dirHome, 'Desktop/cmDiagram{0}.png'.format(field)), dpi=120, bbox_inches='tight')
+    if noFilter:
+        fig.savefig(os.path.join(dirHome, 'Desktop/cmDiagram{0}NoFilter.png'.format(field)), dpi=120, bbox_inches='tight')
+    else:
+        fig.savefig(os.path.join(dirHome, 'Desktop/cmDiagram{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
-def makeRaDecDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterArgs=None):
-    if field == 'XMM':
-        filterArgs =((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0), (0.1, 20.0),
-                     (0.0, 20.0), (0.1, 23.0), (0.2, 24.2), (0.4, 24.2), (0.4, 24.2), (0.4, 24.2))
+def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, noFilter=False):
+    if not noFilter:
+        if field == 'XMM':
+            filterArgs = _filterArgsXMM
+        if field == 'GAMA15':
+            filterArgs = _filterArgsGAMA15
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
     good = False
@@ -611,6 +634,49 @@ def makeRaDecDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filte
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/StarsRaDec{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
+def makeRaDecDensities(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, bandwidth=0.5,
+                       printMaxDens=True, levels=None, noFilter=False):
+    if not noFilter:
+        if field == 'XMM':
+            filterArgs = _filterArgsXMM
+        if field == 'GAMA15':
+            filterArgs = _filterArgsGAMA15
+    ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    stellar = np.logical_not(Y < threshold)
+    good = False
+    if filterArgs is not None:
+        xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
+        inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
+        good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
+        good = np.logical_and(good, inDomain)
+    stellarGood = np.logical_and(good, stellar)
+    stellarBad = np.logical_and(np.logical_not(good), stellar)
+    values = np.vstack((ra[stellarGood], dec[stellarGood])).T
+    kdeGood = KernelDensity(kernel='gaussian', bandwidth=bandwidth).fit(values)
+    values = np.vstack((ra[stellarBad], dec[stellarBad])).T
+    kdeBad = KernelDensity(kernel='gaussian', bandwidth=bandwidth).fit(values)
+    xx, yy = np.meshgrid(np.linspace(ra[stellar].min(), ra[stellar].max(), num=100), np.linspace(dec[stellar].min(), dec[stellar].max(), num=100))
+    positions = np.vstack((xx.ravel(), yy.ravel())).T
+    zzGood = np.reshape(np.exp(kdeGood.score_samples(positions)), xx.shape)
+    zzBad = np.reshape(np.exp(kdeBad.score_samples(positions)), xx.shape)
+    if printMaxDens:
+        print "maxDensGood={0}".format(zzGood.max())
+        print "maxDensBad={0}".format(zzBad.max())
+    fig = plt.figure(figsize=(16, 6), dpi=120)
+    axGood = fig.add_subplot(1, 2, 1)
+    axBad = fig.add_subplot(1, 2, 2)
+    if levels is None:
+        ctrGood = axGood.contour(xx, yy, zzGood)
+        ctrBad = axBad.contour(xx, yy, zzBad)
+    else:
+        ctrGood = axContour.contour(xx, yy, zzGood, levels=levelsGood)
+        ctrBad = axContour.contour(xx, yy, zzBad, levels=levelsBad)
+    if printMaxDens:
+        fig.colorbar(ctrGood, ax=axGood)
+        fig.colorbar(ctrBad, ax=axBad)
+    dirHome = os.path.expanduser('~')
+    fig.savefig(os.path.join(dirHome, 'Desktop/StarsRaDecDensities{0}.png'.format(field)), dpi=120, bbox_inches='tight')
+    
 def makePurityCompletenessPlots(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, computePosteriors=False, fontSize=18,
                                 threshold = 0.9, alpha=0.05):
     if computePosteriors:
