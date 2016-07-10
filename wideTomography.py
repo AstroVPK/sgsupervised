@@ -563,7 +563,7 @@ _filterArgsXMM = ((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0
 _filterArgsGAMA15 = ((0.1, 21.8), (0.13, 22.8), (0.16, 23.5), (0.2, 23.8), (0.0, 21.8), (0.1, 21.8),
                     (0.0, 21.8), (0.3, 23.5), (0.6, 24.0), (0.13, 24.2), (0.13, 24.2), (0.2, 24.2))
 
-def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterArgs=None, noFilter=False,
+def makeCMDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, noFilter=False,
                   raDecCut=None):
     if filterArgs is not None and raDecCut is not None:
         raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
@@ -581,11 +581,11 @@ def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterAr
         good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
         good = np.logical_and(good, inDomain)
     elif raDecCut is not None:
-        assert isinstance(raDecCut, dict):
+        assert isinstance(raDecCut, dict)
         raRange = raDecCut['ra']
         decRange = raDecCut['dec']
         good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
-                              np.logical_and(dec > decRange[0], dec < decRange[1])
+                              np.logical_and(dec > decRange[0], dec < decRange[1]))
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
@@ -608,8 +608,11 @@ def makeCMDiagram(field, subsetSize=100000, threshold=0.9, fontSize=18, filterAr
     else:
         fig.savefig(os.path.join(dirHome, 'Desktop/cmDiagram{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
-def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, noFilter=False):
-    if not noFilter:
+def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None,
+                     noFilter=False, raDecCut=None):
+    if filterArgs is not None and raDecCut is not None:
+        raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
+    if not noFilter and raDecCut is None:
         if field == 'XMM':
             filterArgs = _filterArgsXMM
         if field == 'GAMA15':
@@ -622,6 +625,12 @@ def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filte
         inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
         good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
         good = np.logical_and(good, inDomain)
+    elif raDecCut is not None:
+        assert isinstance(raDecCut, dict)
+        raRange = raDecCut['ra']
+        decRange = raDecCut['dec']
+        good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
+                              np.logical_and(dec > decRange[0], dec < decRange[1]))
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
@@ -635,8 +644,10 @@ def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filte
     fig.savefig(os.path.join(dirHome, 'Desktop/StarsRaDec{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
 def makeRaDecDensities(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, bandwidth=0.5,
-                       printMaxDens=True, levels=None, noFilter=False):
-    if not noFilter:
+                       printMaxDens=True, levels=None, noFilter=False, raDecCut=None):
+    if filterArgs is not None and raDecCut is not None:
+        raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
+    if not noFilter and raDecCut is None:
         if field == 'XMM':
             filterArgs = _filterArgsXMM
         if field == 'GAMA15':
@@ -649,6 +660,12 @@ def makeRaDecDensities(field, subsetSize=500000, threshold=0.9, fontSize=18, fil
         inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
         good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
         good = np.logical_and(good, inDomain)
+    elif raDecCut is not None:
+        assert isinstance(raDecCut, dict)
+        raRange = raDecCut['ra']
+        decRange = raDecCut['dec']
+        good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
+                              np.logical_and(dec > decRange[0], dec < decRange[1]))
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     values = np.vstack((ra[stellarGood], dec[stellarGood])).T
