@@ -467,16 +467,50 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
     plt.show()
     return fig
 
-def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18):
+_filterArgsXMM = ((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0), (0.1, 20.0),
+                 (0.0, 20.0), (0.1, 23.0), (0.2, 24.2), (0.4, 24.2), (0.4, 24.2), (0.4, 24.2))
+_filterArgsGAMA15 = ((0.1, 21.8), (0.13, 22.8), (0.16, 23.5), (0.2, 23.8), (0.0, 21.8), (0.1, 21.8),
+                    (0.0, 21.8), (0.3, 23.5), (0.6, 24.0), (0.13, 24.2), (0.13, 24.2), (0.2, 24.2))
+
+def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18, filterArgs=None, noFilter=False,
+                   raDecCut=None, magCut=None, onlyCut=False):
+    if filterArgs is not None and raDecCut is not None:
+        raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
+    if not noFilter and raDecCut is None:
+        if field == 'XMM':
+            filterArgs = _filterArgsXMM
+        if field == 'GAMA15':
+            filterArgs = _filterArgsGAMA15
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0)]
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
+    stellar = np.logical_not(Y < threshold)
+    good = False
+    if filterArgs is not None:
+        xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
+        inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
+        good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
+        good = np.logical_and(good, inDomain)
+    elif raDecCut is not None:
+        assert isinstance(raDecCut, dict)
+        raRange = raDecCut['ra']
+        decRange = raDecCut['dec']
+        good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
+                              np.logical_and(dec > decRange[0], dec < decRange[1]))
+    if magCut is not None:
+        if isinstance(good, np.ndarray):
+            good = np.logical_and(good, np.logical_and(magI > magCut[0], magI < magCut[1]))
+        else:
+            good = np.logical_and(magI > magCut[0], magI < magCut[1])
+    stellarGood = np.logical_and(good, stellar)
+    stellarBad = np.logical_and(np.logical_not(good), stellar)
     magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
     colNames = ['g-r', 'r-i', 'i-z', 'z-y']
     colLims = [(0.0, 1.5), (-0.2, 2.0), (-0.2, 1.0), (-0.2, 0.4)]
     fig = plt.figure(figsize=(24, 18), dpi=120)
     fig.suptitle(field, fontsize=fontSize)
     for i in range(3):
-        good = np.logical_and(Y > threshold, np.logical_and(magI > magBins[i][0], magI < magBins[i][1]))
+        inBinGood = np.logical_and(stellarGood, np.logical_and(magI > magBins[i][0], magI < magBins[i][1]))
+        inBinBad = np.logical_and(stellarBad, np.logical_and(magI > magBins[i][0], magI < magBins[i][1]))
         for j in range(i*3+1, i*3+4):
             ax = fig.add_subplot(3, 3, j)
             ax.set_title('{0} < {1} < {2}'.format(magBins[i][0], magString, magBins[i][1]), fontsize=fontSize)
@@ -484,13 +518,19 @@ def makeCCDiagrams(field, threshold=0.9, subsetSize=100000, fontSize=18):
             ax.set_ylabel(colNames[j-i*3], fontsize=fontSize)
             ax.set_xlim(colLims[j-i*3-1])
             ax.set_ylim(colLims[j-i*3])
-            im = ax.scatter(X[:, j-i*3-1][good], X[:, j-i*3][good], marker='.', s=10, c=Y[good], vmin=0.9, vmax=1.0,
-                            edgecolors='none')
-        bounds = ax.get_position().bounds
-        cax = fig.add_axes([0.93, bounds[1], 0.015, bounds[3]])
-        cb = plt.colorbar(im, cax=cax)
-        cb.set_label(r'P(Star|Colors+Extendedness)', fontsize=fontSize)
-        cb.ax.tick_params(labelsize=fontSize)
+            if np.sum(stellarGood) == 0:
+                im = ax.scatter(X[:, j-i*3-1][inBinBad], X[:, j-i*3][inBinBad], marker='.', s=10, c=Y[inBinBad], vmin=0.9, vmax=1.0,
+                                edgecolors='none')
+            else:
+                im = ax.scatter(X[:, j-i*3-1][inBinGood], X[:, j-i*3][inBinGood], marker='.', s=10, color='red')
+                if not onlyCut:
+                    im = ax.scatter(X[:, j-i*3-1][inBinBad], X[:, j-i*3][inBinBad], marker='.', s=10, color='black')
+        if np.sum(stellarGood) == 0:
+            bounds = ax.get_position().bounds
+            cax = fig.add_axes([0.93, bounds[1], 0.015, bounds[3]])
+            cb = plt.colorbar(im, cax=cax)
+            cb.set_label(r'P(Star|Colors+Extendedness)', fontsize=fontSize)
+            cb.ax.tick_params(labelsize=fontSize)
     for ax in fig.get_axes():
         for tick in ax.xaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
@@ -558,13 +598,9 @@ def _buildFilterFuncs(xy0H, xy1H, xy2H, xy3H, xyF0H, xyF1H,
     xDomain = (xyF0H[0], xy3H[0])
     return xDomain, FL, FH
 
-_filterArgsXMM = ((0.1, 20.0), (0.2, 22.5), (0.3, 23.0), (0.4, 23.1), (0.0, 20.0), (0.1, 20.0),
-                 (0.0, 20.0), (0.1, 23.0), (0.2, 24.2), (0.4, 24.2), (0.4, 24.2), (0.4, 24.2))
-_filterArgsGAMA15 = ((0.1, 21.8), (0.13, 22.8), (0.16, 23.5), (0.2, 23.8), (0.0, 21.8), (0.1, 21.8),
-                    (0.0, 21.8), (0.3, 23.5), (0.6, 24.0), (0.13, 24.2), (0.13, 24.2), (0.2, 24.2))
 
 def makeCMDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, noFilter=False,
-                  raDecCut=None):
+                  raDecCut=None, magCut=None):
     if filterArgs is not None and raDecCut is not None:
         raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
     if not noFilter and raDecCut is None:
@@ -586,21 +622,42 @@ def makeCMDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterAr
         decRange = raDecCut['dec']
         good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
                               np.logical_and(dec > decRange[0], dec < decRange[1]))
+    if magCut is not None:
+        if isinstance(good, np.ndarray):
+            good = np.logical_and(good, np.logical_and(magI > magCut[0], magI < magCut[1]))
+        else:
+            good = np.logical_and(magI > magCut[0], magI < magCut[1])
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(1, 1, 1)
     ax.scatter(X[:,1][stellarGood], magI[stellarGood], marker='.', s=1, color='red')
     ax.scatter(X[:,1][stellarBad], magI[stellarBad], marker='.', s=1, color='black')
+    dGrid = np.linspace(10.0, 100.0, num=10)
+    riGrid = np.linspace(-0.1, 0.4, num=50)
+    mPlot = np.zeros(riGrid.shape)
+    for d in dGrid:
+        for i, ri in enumerate(riGrid):
+            gr = 0.15785242 + 1.93645872*ri
+            iz = -0.0207809 + 0.5644657*ri
+            def FMagRef(magIRef):
+                magRRef = np.array([magIRef]) + ri
+                magGRef = magRRef + gr
+                magZRef = magIRef - iz
+                magRAbsHsc, dKpc = getParallax(magGRef, magRRef, magIRef, magZRef)
+                return d - dKpc
+            mPlot[i] = brentq(FMagRef, 15.0, 30.0)
+        ax.plot(riGrid, mPlot, color='black', linestyle='--')
     if filterArgs is not None:
         x = np.linspace(xDomain[0], xDomain[1], num=100)
         ax.plot(x, FL(x), color='black')
         ax.plot(x, FH(x), color='black')
         ax.plot([x[-1], x[-1]], [FH(x)[-1], FL(x)[-1]], color='black')
     ax.set_xlim((-0.1, 0.4))
-    ax.set_ylim((18.0, 25.0))
+    ax.set_ylim((18.0, 24.0))
     ax.set_xlabel(r'$r-i$', fontsize=fontSize)
     ax.set_ylabel(r'$\mathrm{Mag}_{cmodel}$ HSC-I', fontsize=fontSize)
+    ax.set_title(field, fontsize=fontSize)
     ax.invert_yaxis()
     dirHome = os.path.expanduser('~')
     if noFilter:
@@ -609,7 +666,7 @@ def makeCMDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterAr
         fig.savefig(os.path.join(dirHome, 'Desktop/cmDiagram{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
 def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None,
-                     noFilter=False, raDecCut=None):
+                     noFilter=False, raDecCut=None, magCut=None, onlyCut=False):
     if filterArgs is not None and raDecCut is not None:
         raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
     if not noFilter and raDecCut is None:
@@ -631,12 +688,18 @@ def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filte
         decRange = raDecCut['dec']
         good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
                               np.logical_and(dec > decRange[0], dec < decRange[1]))
+    if magCut is not None:
+        if isinstance(good, np.ndarray):
+            good = np.logical_and(good, np.logical_and(magI > magCut[0], magI < magCut[1]))
+        else:
+            good = np.logical_and(magI > magCut[0], magI < magCut[1])
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     fig = plt.figure(dpi=120)
     ax = fig.add_subplot(1, 1, 1)
     ax.scatter(ra[stellarGood], dec[stellarGood], marker='.', s=1, color='red')
-    ax.scatter(ra[stellarBad], dec[stellarBad], marker='.', s=1, color='black')
+    if not onlyCut:
+        ax.scatter(ra[stellarBad], dec[stellarBad], marker='.', s=1, color='black')
     ax.set_xlabel('RA', fontsize=fontSize)
     ax.set_ylabel('Dec', fontsize=fontSize)
     ax.set_title('{0}'.format(field))
@@ -644,7 +707,7 @@ def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filte
     fig.savefig(os.path.join(dirHome, 'Desktop/StarsRaDec{0}.png'.format(field)), dpi=120, bbox_inches='tight')
 
 def makeRaDecDensities(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, bandwidth=0.5,
-                       printMaxDens=True, levels=None, noFilter=False, raDecCut=None):
+                       printMaxDens=True, levels=None, noFilter=False, raDecCut=None, magCut=None):
     if filterArgs is not None and raDecCut is not None:
         raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
     if not noFilter and raDecCut is None:
@@ -666,6 +729,11 @@ def makeRaDecDensities(field, subsetSize=500000, threshold=0.9, fontSize=18, fil
         decRange = raDecCut['dec']
         good = np.logical_and(np.logical_and(ra > raRange[0], ra < raRange[1]),
                               np.logical_and(dec > decRange[0], dec < decRange[1]))
+    if magCut is not None:
+        if isinstance(good, np.ndarray):
+            good = np.logical_and(good, np.logical_and(magI > magCut[0], magI < magCut[1]))
+        else:
+            good = np.logical_and(magI > magCut[0], magI < magCut[1])
     stellarGood = np.logical_and(good, stellar)
     stellarBad = np.logical_and(np.logical_not(good), stellar)
     values = np.vstack((ra[stellarGood], dec[stellarGood])).T
