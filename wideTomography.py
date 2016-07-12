@@ -600,22 +600,29 @@ def _buildFilterFuncs(xy0H, xy1H, xy2H, xy3H, xyF0H, xyF1H,
 
 
 def makeCMDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterArgs=None, noFilter=False,
-                  raDecCut=None, magCut=None):
+                  raDecCut=None, magCut=None, dCut=None):
     if filterArgs is not None and raDecCut is not None:
         raise ValueError("Can't specify cuts in both Ra-Dec and color-magnitude.")
     if not noFilter and raDecCut is None:
         if field == 'XMM':
             filterArgs = _filterArgsXMM
+            dCut = (20.0, 40.0)
         if field == 'GAMA15':
             filterArgs = _filterArgsGAMA15
+            dCut = (40.0, 60.0)
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
     good = False
     if filterArgs is not None:
-        xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
-        inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
-        good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
-        good = np.logical_and(good, inDomain)
+        #xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
+        #inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
+        #good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
+        #good = np.logical_and(good, inDomain)
+        magR = X[:,1] + magI
+        magG = X[:,0] + magR
+        magZ = -X[:,2] + magI
+        magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
+        good = np.logical_and(dKpc > dCut[0], dKpc < dCut[1])
     elif raDecCut is not None:
         assert isinstance(raDecCut, dict)
         raRange = raDecCut['ra']
@@ -648,11 +655,11 @@ def makeCMDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filterAr
                 return d - dKpc
             mPlot[i] = brentq(FMagRef, 15.0, 30.0)
         ax.plot(riGrid, mPlot, color='black', linestyle='--')
-    if filterArgs is not None:
-        x = np.linspace(xDomain[0], xDomain[1], num=100)
-        ax.plot(x, FL(x), color='black')
-        ax.plot(x, FH(x), color='black')
-        ax.plot([x[-1], x[-1]], [FH(x)[-1], FL(x)[-1]], color='black')
+    #if filterArgs is not None:
+    #    x = np.linspace(xDomain[0], xDomain[1], num=100)
+    #    ax.plot(x, FL(x), color='black')
+    #    ax.plot(x, FH(x), color='black')
+    #    ax.plot([x[-1], x[-1]], [FH(x)[-1], FL(x)[-1]], color='black')
     ax.set_xlim((-0.1, 0.4))
     ax.set_ylim((18.0, 24.0))
     ax.set_xlabel(r'$r-i$', fontsize=fontSize)
@@ -672,16 +679,23 @@ def makeRaDecDiagram(field, subsetSize=500000, threshold=0.9, fontSize=18, filte
     if not noFilter and raDecCut is None:
         if field == 'XMM':
             filterArgs = _filterArgsXMM
+            dCut = (20.0, 40.0)
         if field == 'GAMA15':
             filterArgs = _filterArgsGAMA15
+            dCut = (40.0, 60.0)
     ids, ra, dec, X, XErr, magI, Y = loadFieldData(field, subsetSize=subsetSize)
     stellar = np.logical_not(Y < threshold)
     good = False
     if filterArgs is not None:
-        xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
-        inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
-        good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
-        good = np.logical_and(good, inDomain)
+        #xDomain, FL, FH = _buildFilterFuncs(*filterArgs)
+        #inDomain = np.logical_and(X[:,1] >= xDomain[0], X[:,1] <=xDomain[1])
+        #good = np.logical_and(magI >= FH(X[:,1]), magI <= FL(X[:,1]))
+        #good = np.logical_and(good, inDomain)
+        magR = X[:,1] + magI
+        magG = X[:,0] + magR
+        magZ = -X[:,2] + magI
+        magRAbsHsc, dKpc = getParallax(magG, magR, magI, magZ)
+        good = np.logical_and(dKpc > dCut[0], dKpc < dCut[1])
     elif raDecCut is not None:
         assert isinstance(raDecCut, dict)
         raRange = raDecCut['ra']
