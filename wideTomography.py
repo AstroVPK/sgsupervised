@@ -75,20 +75,64 @@ def computeFieldPosteriors(field):
     fileInput = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
     fileOutput = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
 
-    with open(fileInput, 'r') as fInput:
-        reader = csv.reader(fInput, delimiter=',')
-        cList = reader.next() # Columns
-        cList[0] = cList[0][2:] # Remove number sign and space
-        with open(fileOutput, 'w') as fOutput:
-            fOutput.write('# P(Star)\n')
-            for line in reader:
-                try:
-                    X, XErr, magI = getXFromLine(line, cList)
-                except ValueError:
-                    fOutput.write('nan\n')
-                    continue
-                pStar = clfXd.predict_proba(X, XErr, magI)[0]
-                fOutput.write('{0}\n'.format(pStar))
+    dfData = pd.read_csv(fileInput)
+    X = np.zeros((dfData.shape[0], 5))
+    XErr = np.zeros((dfData.shape[0], 5, 5))
+    magI = dfData['imag'].values
+    X[:,0] = dfData['gmag'].values - dfData['rmag'].values
+    X[:,1] = dfData['rmag'].values - dfData['imag'].values
+    X[:,2] = dfData['imag'].values - dfData['zmag'].values
+    X[:,3] = dfData['zmag'].values - dfData['ymag'].values
+    errG = dfData['gmag_cmodel_err'].values
+    errR = dfData['rmag_cmodel_err'].values
+    errI = dfData['imag_cmodel_err'].values
+    errZ = dfData['zmag_cmodel_err'].values
+    errY = dfData['ymag_cmodel_err'].values
+    errs = np.vstack((errG, errR, errI, errZ, errY))
+    idxBest = np.argmin(errs, axis=0)
+    idxArr = np.arange(len(errG))
+    errBest = errs[idxBest, idxArr]
+    extG = dfData['gext'].values
+    extR = dfData['rext'].values
+    extI = dfData['iext'].values
+    extZ = dfData['zext'].values
+    extY = dfData['yext'].values
+    exts = np.vstack((errG, errR, errI, errZ, errY))
+    exts = exts[idxBest, idxArr]
+    X[:,4] = exts
+    XErr[:, 0, 0] = errG**2 + errR**2
+    XErr[:, 0, 1] = -errR**2
+    XErr[:, 1, 0] = -errR**2
+    XErr[:, 1, 1] = errR**2 + errI**2
+    XErr[:, 1, 2] = -errI**2
+    XErr[:, 2, 1] = -errI**2
+    XErr[:, 2, 2] = errI**2 + errZ**2
+    XErr[:, 2, 3] = -errZ**2
+    XErr[:, 3, 2] = -errZ**2
+    XErr[:, 3, 3] = errZ**2 + errY**2
+    XErr[:, 4, 4] = errBest**2
+    good = True
+    for i in range(X.shape[1]):
+        good = np.logical_and(good, np.isfinite(X[:,i]))
+    bad = np.logical_not(good)
+    pStar = np.zeros((X.shape[0],))
+    pStar[good] = clfXd.predict_proba(X[good], XErr[good], magI[good])
+    pStar[bad] = np.nan
+    np.savetxt(fileOutput, pStar, header='P(Star)')
+    #3with open(fileInput, 'r') as fInput:
+    #    reader = csv.reader(fInput, delimiter=',')
+    #    cList = reader.next() # Columns
+    #    cList[0] = cList[0][2:] # Remove number sign and space
+    #    with open(fileOutput, 'w') as fOutput:
+    #        fOutput.write('# P(Star)\n')
+    #        for line in reader:
+    #            try:
+    #                X, XErr, magI = getXFromLine(line, cList)
+    #            except ValueError:
+    #                fOutput.write('nan\n')
+    #                continue
+    #            pStar = clfXd.predict_proba(X, XErr, magI)[0]
+    #            fOutput.write('{0}\n'.format(pStar))
 
 def loadFieldData(field, subsetSize=None):
     try:
