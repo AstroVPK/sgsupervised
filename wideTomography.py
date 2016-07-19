@@ -75,6 +75,10 @@ def computeFieldPosteriors(field):
     fileInput = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
     fileOutput = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
 
+    if not os.path.isfile(fileInput):
+        fileInput = '/home/jose/Data/wide{0}.csv'.format(field)
+        fileOutput = '/home/jose/Data/wide{0}Posteriors.csv'.format(field)
+
     dfData = pd.read_csv(fileInput)
     X = np.zeros((dfData.shape[0], 5))
     XErr = np.zeros((dfData.shape[0], 5, 5))
