@@ -64,89 +64,112 @@ def getXFromLine(line, cList):
     XErr[0][4, 4] = errBest**2
     return X, XErr, magI
 
-def computeFieldPosteriors(field):
-    if not field in _fields:
+def computeFieldPosteriors(field, chunksize=None):
+    if not field in _fields and field not in ['deep', 'udeep']:
         raise ValueError("Field must be one of {0}".format(_fields))
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     with open('clfsColsExt.pkl', 'rb') as f:
         clfs = pickle.load(f)
     clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
 
-    fileInput = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
-    fileOutput = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
+    if field in ['deep', 'udeep']:
+        fileInput = '/scr/depot0/garmilla/HSC/{0}.csv'.format(field)
+        fileOutput = '/scr/depot0/garmilla/HSC/{0}PosteriorsRaw.csv'.format(field)
 
-    if not os.path.isfile(fileInput):
-        fileInput = '/home/jose/Data/wide{0}.csv'.format(field)
-        fileOutput = '/home/jose/Data/wide{0}Posteriors.csv'.format(field)
+        if not os.path.isfile(fileInput):
+            fileInput = '/home/jose/Data/{0}.csv'.format(field)
+            fileOutput = '/home/jose/Data/{0}PosteriorsRaw.csv'.format(field)
+    else:
+        fileInput = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
+        fileOutput = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
 
-    dfData = pd.read_csv(fileInput)
-    X = np.zeros((dfData.shape[0], 5))
-    XErr = np.zeros((dfData.shape[0], 5, 5))
-    magI = dfData['imag'].values
-    X[:,0] = dfData['gmag'].values - dfData['rmag'].values
-    X[:,1] = dfData['rmag'].values - dfData['imag'].values
-    X[:,2] = dfData['imag'].values - dfData['zmag'].values
-    X[:,3] = dfData['zmag'].values - dfData['ymag'].values
-    errG = dfData['gmag_cmodel_err'].values
-    errR = dfData['rmag_cmodel_err'].values
-    errI = dfData['imag_cmodel_err'].values
-    errZ = dfData['zmag_cmodel_err'].values
-    errY = dfData['ymag_cmodel_err'].values
-    errs = np.vstack((errG, errR, errI, errZ, errY))
-    idxBest = np.argmin(errs, axis=0)
-    idxArr = np.arange(len(errG))
-    errBest = errs[idxBest, idxArr]
-    extG = dfData['gext'].values
-    extR = dfData['rext'].values
-    extI = dfData['iext'].values
-    extZ = dfData['zext'].values
-    extY = dfData['yext'].values
-    exts = np.vstack((extG, extR, extI, extZ, extY))
-    exts = exts[idxBest, idxArr]
-    X[:,4] = exts
-    XErr[:, 0, 0] = errG**2 + errR**2
-    XErr[:, 0, 1] = -errR**2
-    XErr[:, 1, 0] = -errR**2
-    XErr[:, 1, 1] = errR**2 + errI**2
-    XErr[:, 1, 2] = -errI**2
-    XErr[:, 2, 1] = -errI**2
-    XErr[:, 2, 2] = errI**2 + errZ**2
-    XErr[:, 2, 3] = -errZ**2
-    XErr[:, 3, 2] = -errZ**2
-    XErr[:, 3, 3] = errZ**2 + errY**2
-    XErr[:, 4, 4] = errBest**2
-    good = True
-    for i in range(X.shape[1]):
-        good = np.logical_and(good, np.isfinite(X[:,i]))
-    good = np.logical_and(good, np.isfinite(errBest))
-    bad = np.logical_not(good)
-    pStar = np.zeros((X.shape[0],))
-    pStar[good] = clfXd.predict_proba(X[good], XErr[good], magI[good])
-    pStar[bad] = np.nan
-    np.savetxt(fileOutput, pStar, header='P(Star)')
-    #3with open(fileInput, 'r') as fInput:
-    #    reader = csv.reader(fInput, delimiter=',')
-    #    cList = reader.next() # Columns
-    #    cList[0] = cList[0][2:] # Remove number sign and space
-    #    with open(fileOutput, 'w') as fOutput:
-    #        fOutput.write('# P(Star)\n')
-    #        for line in reader:
-    #            try:
-    #                X, XErr, magI = getXFromLine(line, cList)
-    #            except ValueError:
-    #                fOutput.write('nan\n')
-    #                continue
-    #            pStar = clfXd.predict_proba(X, XErr, magI)[0]
-    #            fOutput.write('{0}\n'.format(pStar))
+        if not os.path.isfile(fileInput):
+            fileInput = '/home/jose/Data/wide{0}.csv'.format(field)
+            fileOutput = '/home/jose/Data/wide{0}Posteriors.csv'.format(field)
+
+    print "Loading csv file..."
+    if chunksize is None:
+        dfData = pd.read_csv(fileInput)
+        reader = [dfData]
+    else:
+        reader = pd.read_csv(fileInput, chunksize=chunksize)
+    for iChunk, dfData in enumerate(reader):
+        print "Done"
+        X = np.zeros((dfData.shape[0], 5))
+        XErr = np.zeros((dfData.shape[0], 5, 5))
+        magI = dfData['imag'].values
+        X[:,0] = dfData['gmag'].values - dfData['rmag'].values
+        X[:,1] = dfData['rmag'].values - dfData['imag'].values
+        X[:,2] = dfData['imag'].values - dfData['zmag'].values
+        X[:,3] = dfData['zmag'].values - dfData['ymag'].values
+        errG = dfData['gmag_cmodel_err'].values
+        errR = dfData['rmag_cmodel_err'].values
+        errI = dfData['imag_cmodel_err'].values
+        errZ = dfData['zmag_cmodel_err'].values
+        errY = dfData['ymag_cmodel_err'].values
+        errs = np.vstack((errG, errR, errI, errZ, errY))
+        idxBest = np.argmin(errs, axis=0)
+        idxArr = np.arange(len(errG))
+        errBest = errs[idxBest, idxArr]
+        extG = dfData['gext'].values
+        extR = dfData['rext'].values
+        extI = dfData['iext'].values
+        extZ = dfData['zext'].values
+        extY = dfData['yext'].values
+        exts = np.vstack((extG, extR, extI, extZ, extY))
+        exts = exts[idxBest, idxArr]
+        X[:,4] = exts
+        XErr[:, 0, 0] = errG**2 + errR**2
+        XErr[:, 0, 1] = -errR**2
+        XErr[:, 1, 0] = -errR**2
+        XErr[:, 1, 1] = errR**2 + errI**2
+        XErr[:, 1, 2] = -errI**2
+        XErr[:, 2, 1] = -errI**2
+        XErr[:, 2, 2] = errI**2 + errZ**2
+        XErr[:, 2, 3] = -errZ**2
+        XErr[:, 3, 2] = -errZ**2
+        XErr[:, 3, 3] = errZ**2 + errY**2
+        XErr[:, 4, 4] = errBest**2
+        good = True
+        for i in range(X.shape[1]):
+            good = np.logical_and(good, np.isfinite(X[:,i]))
+        good = np.logical_and(good, np.isfinite(errBest))
+        bad = np.logical_not(good)
+        pStar = np.zeros((X.shape[0],))
+        print "Finished preparing classifier inputs"
+        print "Computing posteriors..."
+        pStar[good] = clfXd.predict_proba(X[good], XErr[good], magI[good])
+        pStar[bad] = np.nan
+        print "Done"
+        print "Saving to file..."
+        if chunksize is None:
+            np.savetxt(fileOutput, pStar, header='P(Star)')
+        else:
+            np.savetxt(fileOutput[:-4]+'Chunk{0}.csv'.format(iChunk), pStar, header='P(Star)')
+        print "Done"
+    if chunksize is not None:
+        arr = np.zeros((0,))
+        for i in range(iChunk+1):
+            dFrame = pd.read_csv(fileOutput[:-4]+'Chunk{0}.csv'.format(i))
+            arr = np.hstack((arr, dFrame.values[:,0]))
+        np.savetxt(fileOutput, arr, header='P(Star)')
 
 def loadFieldData(field, subsetSize=None):
     try:
-        fNameData = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
-        fNamePost = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
+        if field in ['deep', 'udeep']:
+            fNameData = '/scr/depot0/garmilla/HSC/{0}.csv'.format(field)
+            fNamePost = '/scr/depot0/garmilla/HSC/{0}PosteriorsRaw.csv'.format(field)
+        else:
+            fNameData = '/scr/depot0/garmilla/HSC/wide{0}.csv'.format(field)
+            fNamePost = '/scr/depot0/garmilla/HSC/wide{0}Posteriors.csv'.format(field)
         fileLen(fNamePost) - 1
     except IOError:
-        fNameData = '/home/jose/Data/wide{0}.csv'.format(field)
-        fNamePost = '/home/jose/Data/wide{0}Posteriors.csv'.format(field)
+        if field in ['deep', 'udeep']:
+            fNameData = '/home/jose/Data/{0}.csv'.format(field)
+            fNamePost = '/home/jose/Data/{0}PosteriorsRaw.csv'.format(field)
+        else:
+            fNameData = '/home/jose/Data/wide{0}.csv'.format(field)
+            fNamePost = '/home/jose/Data/wide{0}Posteriors.csv'.format(field)
     if subsetSize is None:
         subsetSize = fileLen(fNamePost) - 1
     subset = selectFieldSubset(fNamePost, subsetSize)
@@ -1112,10 +1135,10 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     return fig
     
 if __name__ == '__main__':
-    #field = 'VVDS'
-    #computeFieldPosteriors(field)
+    field = 'deep'
+    computeFieldPosteriors(field, chunksize=1000000)
     #makeCCDiagrams(field)
-    makeWideGallacticProjection()
+    #makeWideGallacticProjection()
     #makeTomographyCBins()
     #genDBPosts('HectoMap')
     #preLoadField('XMM')
