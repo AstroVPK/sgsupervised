@@ -101,7 +101,7 @@ def computeFieldPosteriors(field):
     extI = dfData['iext'].values
     extZ = dfData['zext'].values
     extY = dfData['yext'].values
-    exts = np.vstack((errG, errR, errI, errZ, errY))
+    exts = np.vstack((extG, extR, extI, extZ, extY))
     exts = exts[idxBest, idxArr]
     X[:,4] = exts
     XErr[:, 0, 0] = errG**2 + errR**2
@@ -118,6 +118,7 @@ def computeFieldPosteriors(field):
     good = True
     for i in range(X.shape[1]):
         good = np.logical_and(good, np.isfinite(X[:,i]))
+    good = np.logical_and(good, np.isfinite(errBest))
     bad = np.logical_not(good)
     pStar = np.zeros((X.shape[0],))
     pStar[good] = clfXd.predict_proba(X[good], XErr[good], magI[good])
@@ -176,7 +177,7 @@ def loadFieldData(field, subsetSize=None):
     extI = dfData['iext'].values[subset]
     extZ = dfData['zext'].values[subset]
     extY = dfData['yext'].values[subset]
-    exts = np.vstack((errG, errR, errI, errZ, errY))
+    exts = np.vstack((extG, extR, extI, extZ, extY))
     exts = exts[idxBest, idxArr]
     X[:,4] = exts
     XErr[:, 0, 0] = errG**2 + errR**2
