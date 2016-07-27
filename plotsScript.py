@@ -2164,6 +2164,45 @@ def cosmosWideSvmScores(trainXd=False, trainSvm=False, fontSize=18):
         dirHome = os.path.expanduser('~')
         figScores.savefig(os.path.join(dirHome, 'Desktop/cosmosWideSvmScores{0}.png').format(name), dpi=120, bbox_inches='tight')
 
+class ClfHsc(object):
+
+    def __init__(self, ids, preds):
+        good = np.logical_not(ids == 0)
+        ids = ids[good]
+        preds = np.abs(preds[good] - 1.0)
+        idxs = np.argsort(ids)
+        self.ids = ids[idxs]
+        self.preds = preds[idxs]
+
+    def predict(self, ids):
+        Ypred = np.zeros(ids.shape)
+        idxs = np.searchsorted(self.ids, ids)
+        Ypred = self.preds[idxs]
+        return Ypred
+
+def makeRachelPlots(depth='udeep'):
+    with open('clfsColsExt.pkl', 'rb') as f:
+        clfs = pickle.load(f)
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+    if depth == 'udeep':
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/udeepHscClass.fits')
+    elif depth == 'wide':
+        cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/wideHscClass.fits')
+    else:
+        raise ValueError('I only have udeep and wide depths.')
+    YHsc = cat.get('iclassification.extendedness')
+    ids = cat.get('id.2')
+    clfHsc = ClfHsc(ids, YHsc)
+    trainSet = etl.extractTrainSet(cat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True, mode='colors', concatBands=False,
+                                   fromDB=True)
+    X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
+    mags = trainSet.getTestMags(band='i')
+    ids = trainSet.getAllIds()
+    #posteriors = clfXd.predict_proba(X, XErr, mags)
+    YHsc = clfHsc.predict(ids)
+    import ipdb; ipdb.set_trace()
+
 if __name__ == '__main__':
     #cutsPlots()
     #colExPlots()
@@ -2189,6 +2228,7 @@ if __name__ == '__main__':
     #peterPlot()
     #xdColExtFitScores()
     #xdColExtSvmScores(trainSvm=True)
-    makeCosmosWidePlots()
+    #makeCosmosWidePlots()
     #makeCosmosWideScoresPlot()
     #cosmosWideSvmScores()
+    makeRachelPlots()

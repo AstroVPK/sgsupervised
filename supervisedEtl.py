@@ -115,6 +115,8 @@ def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True):
 def getId(cat, band='i'):
     if band == 'fromDB':
         return cat.get('id.2')
+    elif band == 'forced':
+        return cat.get('id')
     else:
         return cat.get('multId.'+band)
 
@@ -795,7 +797,10 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
             decs[:] = getInput(cat, inputName='dec', band='fromDB')
         for i, band in enumerate(bands):
             if not fromDB:
-                ids[:, i] = getInput(cat, inputName='id', band=band)
+                try:
+                    ids[:, i] = getInput(cat, inputName='id', band=band)
+                except KeyError:
+                    ids[:, i] = getInput(cat, inputName='id', band='forced')
                 ras[:, i] = getInput(cat, inputName='ra', band=band)
                 decs[:, i] = getInput(cat, inputName='dec', band=band)
                 seeings[:, i] = getInput(cat, inputName='seeing', band=band)
@@ -850,6 +855,9 @@ def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
 
     if 'fromDB' in kargs:
         fromDB = kargs['fromDB']
+    else:
+        fromDB = False
+
     if kargs['withErr'] == True:
         if fromDB:
             X, XErr, Y, ids, ras, decs, mags, exts, snrs = _extractXY(cat, **kargs)
