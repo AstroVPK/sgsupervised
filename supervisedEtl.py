@@ -1550,3 +1550,19 @@ class IsochroneReader(object):
                    count += 1
                else:
                    continue
+
+class ClfHsc(object):
+
+    def __init__(self, ids, preds):
+        good = np.logical_not(ids == 0)
+        ids = ids[good]
+        preds = np.abs(preds[good] - 1.0)
+        idxs = np.argsort(ids)
+        self.ids = ids[idxs]
+        self.preds = preds[idxs]
+
+    def predict(self, ids):
+        Ypred = np.zeros(ids.shape)
+        idxs = np.searchsorted(self.ids, ids)
+        Ypred = self.preds[idxs]
+        return Ypred

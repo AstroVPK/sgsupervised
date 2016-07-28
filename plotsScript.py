@@ -2164,21 +2164,6 @@ def cosmosWideSvmScores(trainXd=False, trainSvm=False, fontSize=18):
         dirHome = os.path.expanduser('~')
         figScores.savefig(os.path.join(dirHome, 'Desktop/cosmosWideSvmScores{0}.png').format(name), dpi=120, bbox_inches='tight')
 
-class ClfHsc(object):
-
-    def __init__(self, ids, preds):
-        good = np.logical_not(ids == 0)
-        ids = ids[good]
-        preds = np.abs(preds[good] - 1.0)
-        idxs = np.argsort(ids)
-        self.ids = ids[idxs]
-        self.preds = preds[idxs]
-
-    def predict(self, ids):
-        Ypred = np.zeros(ids.shape)
-        idxs = np.searchsorted(self.ids, ids)
-        Ypred = self.preds[idxs]
-        return Ypred
 
 def makeRachelPlots(depth='udeep', fontSize=18):
     with open('clfsColsExt.pkl', 'rb') as f:
@@ -2199,43 +2184,81 @@ def makeRachelPlots(depth='udeep', fontSize=18):
             cat = afwTable.SimpleCatalog.readFits('/home/jose/Data/wideHscClass.fits')
     else:
         raise ValueError('I only have udeep and wide depths.')
-    YHsc = cat.get('iclassification.extendedness')
+    depth = depth[0].upper() + depth[1:]
+    predHsc = cat.get('iclassification.extendedness')
     ids = cat.get('id.2')
-    clfHsc = ClfHsc(ids, YHsc)
+    clfHsc = etl.ClfHsc(ids, predHsc)
+    with open('hscClf{0}.pkl'.format(depth), 'w') as f:
+        pickle.dump(clfHsc, f)
     trainSet = etl.extractTrainSet(cat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True, mode='colors', concatBands=False,
                                    fromDB=True)
+    with open('hscClass{0}.pkl'.format(depth), 'w') as f:
+        pickle.dump(trainSet, f)
     X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
     gals = np.logical_not(Y)
-    mags = trainSet.getTestMags(band='i')
+    mags = trainSet.getAllMags(band='i')
     ids = trainSet.getAllIds()
-    YXd = np.logical_not(clfXd.predict_proba(X, XErr, mags) < 0.5)
-    galsXd = np.logical_not(YXd)
+    YXd = clfXd.predict_proba(X, XErr, mags)
+    YXd1 = np.logical_not(YXd < 0.1)
+    YXd5 = np.logical_not(YXd < 0.5)
+    YXd9 = np.logical_not(YXd < 0.9)
+    galsXd1 = np.logical_not(YXd1)
+    galsXd5 = np.logical_not(YXd5)
+    galsXd9 = np.logical_not(YXd9)
     YHsc = clfHsc.predict(ids).astype(bool)
     galsHsc = np.logical_not(YHsc)
     magGrid = np.linspace(18.0, 25.0, num=51)
     magGridCenters = 0.5*(magGrid[:-1] + magGrid[1:])
-    purityStarsXd = np.zeros(magGridCenters.shape)
-    compStarsXd = np.zeros(magGridCenters.shape)
-    purityGalsXd = np.zeros(magGridCenters.shape)
-    compGalsXd = np.zeros(magGridCenters.shape)
+    purityStarsXd1 = np.zeros(magGridCenters.shape)
+    compStarsXd1 = np.zeros(magGridCenters.shape)
+    purityGalsXd1 = np.zeros(magGridCenters.shape)
+    compGalsXd1 = np.zeros(magGridCenters.shape)
+    purityStarsXd5 = np.zeros(magGridCenters.shape)
+    compStarsXd5 = np.zeros(magGridCenters.shape)
+    purityGalsXd5 = np.zeros(magGridCenters.shape)
+    compGalsXd5 = np.zeros(magGridCenters.shape)
+    purityStarsXd9 = np.zeros(magGridCenters.shape)
+    compStarsXd9 = np.zeros(magGridCenters.shape)
+    purityGalsXd9 = np.zeros(magGridCenters.shape)
+    compGalsXd9 = np.zeros(magGridCenters.shape)
     purityStarsHsc = np.zeros(magGridCenters.shape)
     compStarsHsc = np.zeros(magGridCenters.shape)
     purityGalsHsc = np.zeros(magGridCenters.shape)
     compGalsHsc = np.zeros(magGridCenters.shape)
     for i in range(len(magGrid)-1):
         inBin = np.logical_and(mags > magGrid[i], mags < magGrid[i+1])
-        goodStarsXd = np.logical_and(Y[inBin], YXd[inBin])
-        goodGalsXd = np.logical_and(gals[inBin], galsXd[inBin])
+        goodStarsXd1 = np.logical_and(Y[inBin], YXd1[inBin])
+        goodGalsXd1 = np.logical_and(gals[inBin], galsXd1[inBin])
+        goodStarsXd5 = np.logical_and(Y[inBin], YXd5[inBin])
+        goodGalsXd5 = np.logical_and(gals[inBin], galsXd5[inBin])
+        goodStarsXd9 = np.logical_and(Y[inBin], YXd9[inBin])
+        goodGalsXd9 = np.logical_and(gals[inBin], galsXd9[inBin])
         goodStarsHsc = np.logical_and(Y[inBin], YHsc[inBin])
         goodGalsHsc = np.logical_and(gals[inBin], galsHsc[inBin])
-        if np.sum(YXd[inBin]) > 0:
-            purityStarsXd[i] = np.sum(goodStarsXd)*1.0/np.sum(YXd[inBin])
+        if np.sum(YXd1[inBin]) > 0:
+            purityStarsXd1[i] = np.sum(goodStarsXd1)*1.0/np.sum(YXd1[inBin])
         if np.sum(Y[inBin]) > 0:
-            compStarsXd[i] = np.sum(goodStarsXd)*1.0/np.sum(Y[inBin])
-        if np.sum(galsXd[inBin]) > 0:
-            purityGalsXd[i] = np.sum(goodGalsXd)*1.0/np.sum(galsXd[inBin])
+            compStarsXd1[i] = np.sum(goodStarsXd1)*1.0/np.sum(Y[inBin])
+        if np.sum(galsXd1[inBin]) > 0:
+            purityGalsXd1[i] = np.sum(goodGalsXd1)*1.0/np.sum(galsXd1[inBin])
         if np.sum(gals[inBin]) > 0:
-            compGalsXd[i] = np.sum(goodGalsXd)*1.0/np.sum(gals[inBin])
+            compGalsXd1[i] = np.sum(goodGalsXd1)*1.0/np.sum(gals[inBin])
+        if np.sum(YXd5[inBin]) > 0:
+            purityStarsXd5[i] = np.sum(goodStarsXd5)*1.0/np.sum(YXd5[inBin])
+        if np.sum(Y[inBin]) > 0:
+            compStarsXd5[i] = np.sum(goodStarsXd5)*1.0/np.sum(Y[inBin])
+        if np.sum(galsXd5[inBin]) > 0:
+            purityGalsXd5[i] = np.sum(goodGalsXd5)*1.0/np.sum(galsXd5[inBin])
+        if np.sum(gals[inBin]) > 0:
+            compGalsXd5[i] = np.sum(goodGalsXd5)*1.0/np.sum(gals[inBin])
+        if np.sum(YXd9[inBin]) > 0:
+            purityStarsXd9[i] = np.sum(goodStarsXd9)*1.0/np.sum(YXd9[inBin])
+        if np.sum(Y[inBin]) > 0:
+            compStarsXd9[i] = np.sum(goodStarsXd9)*1.0/np.sum(Y[inBin])
+        if np.sum(galsXd9[inBin]) > 0:
+            purityGalsXd9[i] = np.sum(goodGalsXd9)*1.0/np.sum(galsXd9[inBin])
+        if np.sum(gals[inBin]) > 0:
+            compGalsXd9[i] = np.sum(goodGalsXd9)*1.0/np.sum(gals[inBin])
         if np.sum(YHsc[inBin]) > 0:
             purityStarsHsc[i] = np.sum(goodStarsHsc)*1.0/np.sum(YHsc[inBin])
         if np.sum(Y[inBin]) > 0:
@@ -2262,21 +2285,30 @@ def makeRachelPlots(depth='udeep', fontSize=18):
     axGal.set_xlim((18.0, 25.0))
     fig.suptitle(suptitle, fontsize=fontSize)
 
-    axGal.step(magGridCenters, compGalsXd, color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
-    axGal.step(magGridCenters, purityGalsXd, color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
-    axStar.step(magGridCenters, compStarsXd, color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
-    axStar.step(magGridCenters, purityStarsXd, color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
+    #axGal.step(magGridCenters, compGalsXd1, color='red', linestyle='-.', label='P(Star)=0.1 Cut Completeness')
+    #axGal.step(magGridCenters, purityGalsXd1, color='blue', linestyle='-.', label='P(Star)=0.1 Cut Purity')
+    #axStar.step(magGridCenters, compStarsXd1, color='red', linestyle='-.', label='P(Star)=0.1 Cut Completeness')
+    #axStar.step(magGridCenters, purityStarsXd1, color='blue', linestyle='-.', label='P(Star)=0.1 Cut Purity')
 
-    axGal.step(magGridCenters, compGalsHsc, color='red', linestyle='--', label='hscPipe Completeness')
-    axGal.step(magGridCenters, purityGalsHsc, color='blue', linestyle='--', label='hscPipe Purity')
-    axStar.step(magGridCenters, compStarsHsc, color='red', linestyle='--', label='hscPipe Completeness')
-    axStar.step(magGridCenters, purityStarsHsc, color='blue', linestyle='--', label='hscPipe Purity')
+    axGal.step(magGridCenters, compGalsXd5, color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
+    axGal.step(magGridCenters, purityGalsXd5, color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
+    axStar.step(magGridCenters, compStarsXd5, color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
+    axStar.step(magGridCenters, purityStarsXd5, color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
+
+    axGal.step(magGridCenters, compGalsXd9, color='red', linestyle='--', label='P(Star)=0.9 Cut Completeness')
+    axGal.step(magGridCenters, purityGalsXd9, color='blue', linestyle='--', label='P(Star)=0.9 Cut Purity')
+    axStar.step(magGridCenters, compStarsXd9, color='red', linestyle='--', label='P(Star)=0.9 Cut Completeness')
+    axStar.step(magGridCenters, purityStarsXd9, color='blue', linestyle='--', label='P(Star)=0.9 Cut Purity')
+
+    axGal.step(magGridCenters, compGalsHsc, color='red', linestyle=':', label='hscPipe Completeness')
+    axGal.step(magGridCenters, purityGalsHsc, color='blue', linestyle=':', label='hscPipe Purity')
+    axStar.step(magGridCenters, compStarsHsc, color='red', linestyle=':', label='hscPipe Completeness')
+    axStar.step(magGridCenters, purityStarsHsc, color='blue', linestyle=':', label='hscPipe Purity')
 
     axGal.legend(loc='lower left', fontsize=fontSize-2)
     axStar.legend(loc='lower left', fontsize=fontSize-2)
 
     dirHome = os.path.expanduser('~')
-    depth = depth[0].upper() + depth[1:]
     fig.savefig(os.path.join(dirHome, 'Desktop/xdHscComp{0}.png'.format(depth)), dpi=120, bbox_inches='tight')
 
 if __name__ == '__main__':
@@ -2307,4 +2339,4 @@ if __name__ == '__main__':
     #makeCosmosWidePlots()
     #makeCosmosWideScoresPlot()
     #cosmosWideSvmScores()
-    makeRachelPlots(depth='udeep')
+    makeRachelPlots(depth='wide')
