@@ -154,7 +154,10 @@ def getMagErr(cat, band='i'):
         ratErr = np.sqrt(np.square(fErr) + np.square(f*f0Err/f0))/f0
         magErr = 2.5/np.log(10.0)*ratErr/rat
     except KeyError:
-        magErr = cat.get(band+'mag.cmodel.err')
+        try:
+            magErr = cat.get(band+'mag.cmodel.err')
+        except KeyError:
+            magErr = cat.get(band+'cmodel.mag.err')
     return magErr
 
 def getMagPsf(cat, band='i'):
@@ -223,7 +226,10 @@ def getSnr(cat, band='i'):
         fErr = cat.get('cmodel.flux.err.'+band)
         snr = f/fErr
     except KeyError:
-        snr = 2.5/np.log(10.0)/cat.get(band+'mag.cmodel.err')
+        try:
+            snr = 2.5/np.log(10.0)/cat.get(band+'mag.cmodel.err')
+        except KeyError:
+            snr = 2.5/np.log(10.0)/cat.get(band+'cmodel.mag.err')
     return snr
     
 def getSnrPsf(cat, band='i'):
