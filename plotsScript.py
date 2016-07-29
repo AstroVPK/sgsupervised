@@ -2279,7 +2279,7 @@ def makeRachelPlots(depth='udeep', fontSize=18):
     axGal.set_ylabel(ylabel, fontsize=fontSize)
     axStar.set_xlabel(xlabel, fontsize=fontSize)
     axStar.set_ylabel(ylabel, fontsize=fontSize)
-    axGal.set_ylim((0.0, 1.0))
+    axGal.set_ylim((0.9, 1.0))
     axStar.set_ylim((0.0, 1.0))
     axGal.set_xlim((18.0, 25.0))
     axGal.set_xlim((18.0, 25.0))
@@ -2307,6 +2307,12 @@ def makeRachelPlots(depth='udeep', fontSize=18):
 
     axGal.legend(loc='lower left', fontsize=fontSize-2)
     axStar.legend(loc='lower left', fontsize=fontSize-2)
+
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
 
     dirHome = os.path.expanduser('~')
     fig.savefig(os.path.join(dirHome, 'Desktop/xdHscComp{0}.png'.format(depth)), dpi=120, bbox_inches='tight')
@@ -2339,4 +2345,4 @@ if __name__ == '__main__':
     #makeCosmosWidePlots()
     #makeCosmosWideScoresPlot()
     #cosmosWideSvmScores()
-    makeRachelPlots(depth='wide')
+    makeRachelPlots(depth='udeep')
