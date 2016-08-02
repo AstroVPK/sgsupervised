@@ -585,6 +585,17 @@ class TrainingSet(object):
             else:
                 return self.exts[:, self.bands.index(band)][self.trainIndexes]
 
+    def getTrainSnrs(self, band=None):
+        if band is None:
+            return self.snrs[self.trainIndexes]
+        else:
+            if band == 'best':
+                idxBest = np.argmax(self.snrs[self.trainIndexes], axis=1)
+                idxArr = np.arange(self.nTrain)
+                return self.snrs[self.trainIndexes][idxArr, idxBest]
+            else:
+                return self.snrs[:, self.bands.index(band)][self.trainIndexes]
+
     def getTestSet(self, standardized=True):
         if standardized:
             if hasattr(self, 'XErr'):
@@ -623,6 +634,17 @@ class TrainingSet(object):
             else:
                 return self.exts[:, self.bands.index(band)][self.testIndexes]
 
+    def getTestSnrs(self, band=None):
+        if band is None:
+            return self.snrs[self.testIndexes]
+        else:
+            if band == 'best':
+                idxBest = np.argmax(self.snrs[self.testIndexes], axis=1)
+                idxArr = np.arange(self.nTest)
+                return self.snrs[self.testIndexes][idxArr, idxBest]
+            else:
+                return self.snrs[:, self.bands.index(band)][self.testIndexes]
+
     def getAllSet(self, standardized=True):
         if standardized:
             return (self.X - self.XmeanAll)/self.XstdAll, self.Y
@@ -658,17 +680,52 @@ class TrainingSet(object):
             else:
                 return self.exts[:, self.bands.index(band)]
 
+    def getAllSnrs(self, band=None):
+        if band is None:
+            return self.snrs
+        else:
+            if band == 'best':
+                idxBest = np.argmax(self.snrs, axis=1)
+                idxArr = np.arange(self.nTotal)
+                return self.snrs[idxArr, idxBest]
+            else:
+                return self.snrs[:, self.bands.index(band)]
+
     def genColExtTrainSet(self, mode='all', standardized=False, extsMean=None, extsStd=None,
-                          magsMean=None, magsStd=None):
+                          magsMean=None, magsStd=None, combExt=False, weightedComb=False):
         if mode == 'all':
             XSub, XErrSub, Y = self.getAllSet(standardized=standardized)
-            exts, extsErr = self.getAllExts(band='best')
+            if combExt:
+                if weigthedComb:
+                    exts = np.mean(self.getAllSnrs(band=None)*self.getAllExts(band=None), axis=1)
+                    extsErr = 1.0/np.sqrt(len(self.bands)*1.0)
+                else:
+                    exts = np.mean(self.getAllExts(band=None), axis=1)
+                    extsErr = np.sqrt(np.mean(1.0/self.getAllSnrs(band=None)**2, axis=1)/len(self.bands))
+            else:
+                exts, extsErr = self.getAllExts(band='best')
         elif mode == 'train':
             XSub, XErrSub, Y = self.getTrainSet(standardized=standardized)
-            exts, extsErr = self.getTrainExts(band='best')
+            if combExt:
+                if weightedComb:
+                    exts = np.mean(self.getTrainExts(band=None)*self.getTrainExts(band=None), axis=1)
+                    extsErr = 1.0/np.sqrt(len(self.bands)*1.0)
+                else:
+                    exts = np.mean(self.getTrainExts(band=None), axis=1)
+                    extsErr = np.sqrt(np.mean(1.0/self.getTrainExts(band=None)**2, axis=1)/len(self.bands))
+            else:
+                exts, extsErr = self.getTrainExts(band='best')
         elif mode == 'test':
             XSub, XErrSub, Y = self.getTestSet(standardized=standardized)
-            exts, extsErr = self.getTestExts(band='best')
+            if combExt:
+                if weightedComb:
+                    exts = np.mean(self.getTestExts(band=None)*self.getTestExts(band=None), axis=1)
+                    extsErr = 1.0/np.sqrt(len(self.bands)*1.0)
+                else:
+                    exts = np.mean(self.getTestExts(band=None), axis=1)
+                    extsErr = np.sqrt(np.mean(1.0/self.getTestExts(band=None)**2, axis=1)/len(self.bands))
+            else:
+                exts, extsErr = self.getTestExts(band='best')
             if standardized:
                 if extsMean is None:
                     try:
@@ -1086,7 +1143,8 @@ class Training(object):
 
     def plotScores(self, nBins=50, sType='test', fig=None, linestyle='-', fontSize=18,
                    magRange=None, xlabel='Magnitude', ylabel='Scores', legendLabel='',
-                   standardized=True, suptitle=None, kargsPred={}, xlim=None, colExt=False, svm=False):
+                   standardized=True, suptitle=None, kargsPred={}, xlim=None, colExt=False, svm=False,
+                   combExt=False, weightedComb=False):
         if sType == 'test':
             mags = self.trainingSet.getTestMags(band='i')
         elif sType == 'train':
@@ -1107,7 +1165,7 @@ class Training(object):
         purityGals = np.zeros(magsCenters.shape)
         if colExt:
             assert not svm
-            X, XErr, Y = self.trainingSet.genColExtTrainSet(mode=sType)
+            X, XErr, Y = self.trainingSet.genColExtTrainSet(mode=sType, combExt=combExt, weightedComb=weightedComb)
             pred = self.clf.predict(X, XErr, mags, **kargsPred)
             truth = Y
         elif svm:

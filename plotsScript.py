@@ -1550,6 +1550,62 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             tick.label.set_fontsize(fontSize)
     figBias.savefig(os.path.join(dirHome, 'Desktop/xdColExtBias.png'), dpi=120, bbox_inches='tight')
 
+def xdColExtFitScoresComb(trainClfs=True, fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '-', ':']):
+    with open('trainSet.pkl', 'rb') as f:
+        trainSet = pickle.load(f)
+    magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
+    if trainClfs:
+        gaussians = [(10, 10), (10, 10), (10, 10), (10, 10)]
+        X, XErr, Y = trainSet.genColExtTrainSet(mode='train', combExt=True)
+        mags = trainSet.getTrainMags(band='i')
+        clfsComb = []
+        for i, magBin in enumerate(magBins):
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfsComb.append(clf)
+        print "Finished training, dumping resutls in clfsColsExtComb.pkl"
+        with open('clfsColsExtComb.pkl', 'wb') as f:
+            pickle.dump(clfsComb, f)
+        X, XErr, Y = trainSet.genColExtTrainSet(mode='train', combExt=True, weightedComb=True)
+        mags = trainSet.getTrainMags(band='i')
+        clfsCombW = []
+        for i, magBin in enumerate(magBins):
+            good = np.logical_and(magBin[0] < mags, mags < magBin[1])
+            ngStar, ngGal = gaussians[i]
+            clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
+            clf.fit(X[good], XErr[good], Y[good])
+            clfsCombW.append(clf)
+        print "Finished training, dumping resutls in clfsColsExtComb.pkl"
+        with open('clfsColsExtCombW.pkl', 'wb') as f:
+            pickle.dump(clfsCombW, f)
+    else:
+        with open('clfsColsExtComb.pkl', 'rb') as f:
+            clfsComb = pickle.load(f)
+        with open('clfsColsExtCombW.pkl', 'rb') as f:
+            clfsCombW = pickle.load(f)
+    with open('clfsColsExt.pkl', 'rb') as f:
+        clfs = pickle.load(f)
+    clfXdComb = dGauss.XDClfs(clfs=clfsComb, magBins=magBins)
+    clfXdCombW = dGauss.XDClfs(clfs=clfsCombW, magBins=magBins)
+    clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
+    trainComb = etl.Training(trainSet, clfXdComb)
+    trainCombW = etl.Training(trainSet, clfXdComb)
+    train = etl.Training(trainSet, clfXd)
+    figScores = train.plotScores(sType='test', xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle='-',
+                                 legendLabel=r'Highest S/N', standardized=False, magRange=(18.5, 25.0),
+                                 suptitle=r'Highest S/N vs Linear Combinations of Extendedness', kargsPred={'threshold': 0.5}, colExt=True,
+                                 combExt=False)
+    figScores = trainComb.plotScores(sType='test', fig=figScores, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle='--',
+                                     legendLabel=r'Mean', standardized=False, magRange=(18.5, 25.0),
+                                     kargsPred={'threshold': 0.5}, colExt=True, combExt=True)
+    figScores = trainCombW.plotScores(sType='test', fig=figScores, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle=':',
+                                     legendLabel=r'Weighted Mean', standardized=False, magRange=(18.5, 25.0),
+                                     kargsPred={'threshold': 0.5}, colExt=True, combExt=True, weightedComb=True)
+    dirHome = os.path.expanduser('~')
+    figScores.savefig(os.path.join(dirHome, 'Desktop/xdColExtScoresComb.png'), dpi=120, bbox_inches='tight')
+
 def xdColExtSvmScores(trainXd=False, trainSvm=False, fontSize=18):
     with open('trainSet.pkl', 'rb') as f:
         trainSet = pickle.load(f)
@@ -2345,4 +2401,5 @@ if __name__ == '__main__':
     #makeCosmosWidePlots()
     #makeCosmosWideScoresPlot()
     #cosmosWideSvmScores()
-    makeRachelPlots(depth='udeep')
+    #makeRachelPlots(depth='udeep')
+    xdColExtFitScoresComb()
