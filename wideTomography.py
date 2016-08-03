@@ -10,6 +10,7 @@ from scipy.stats import beta, poisson
 #mpl.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
+from scipy.spatial import Delaunay
 from astropy import units
 from astropy.coordinates import SkyCoord
 from sklearn.neighbors.kde import KernelDensity
@@ -1134,9 +1135,42 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     fig.savefig(os.path.join(dirHome, 'Desktop/wideProjection.png'), dpi=120, bbox_inches='tight')
     return fig
     
+def makeAdrianPlots():
+    sgr = np.genfromtxt("/u/garmilla/Desktop/SgrTriax_DYN.dat", 
+                        delimiter=" ", dtype=None, names=True)
+    sgr_c = SkyCoord(ra=sgr['ra']*units.degree, 
+                           dec=sgr['dec']*units.degree,
+                           distance=sgr['dist']*units.kpc)
+
+    hsc_gama = pd.read_csv("/u/garmilla/Desktop/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+    hsc_xmm = pd.read_csv("/u/garmilla/Desktop/xmmRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+    hsc_fields = {'gama': hsc_gama, 'xmm': hsc_xmm}
+    hsc_c = {name: SkyCoord(ra=np.asarray(f['ra'])*units.deg, dec=np.asarray(f['dec'])*units.deg)
+             for name,f in hsc_fields.items()}
+    hsc_hulls = {name: Delaunay(np.vstack((c.galactic.l.degree, c.galactic.b.degree)).T) for name, c in hsc_c.items()}
+    sgr_pts = np.vstack((sgr_c.galactic.l.degree, sgr_c.galactic.l.degree)).T
+
+    sgr_in_hsc_idx = {}
+    for name, hull in hsc_hulls.items():
+        sgr_in_hsc_idx[name] = hull.find_simplex(sgr_pts) >= 0
+
+    fig, ax = plt.subplots(1,1,figsize=(15,8),subplot_kw=dict(projection='mollweide'))
+
+    cb = ax.scatter(sgr_c.galactic.l.wrap_at(180*units.degree).radian, sgr_c.galactic.b.radian, 
+                   c=sgr_c.distance.kpc, vmin=3, vmax=60, s=2, edgecolors='none')
+
+    for c in hsc_c.values():
+        ax.plot(c.galactic.l.wrap_at(180*units.degree).radian[::1000], c.galactic.b.radian[::1000], 
+                linestyle='none', marker=',', color='black')
+
+    cbar = fig.colorbar(cb)
+    cbar.set_label('Dist. [kpc]')
+
+    plt.show()
+
 if __name__ == '__main__':
-    field = 'deep'
-    computeFieldPosteriors(field, chunksize=1000000)
+    #field = 'deep'
+    #computeFieldPosteriors(field, chunksize=1000000)
     #makeCCDiagrams(field)
     #makeWideGallacticProjection()
     #makeTomographyCBins()
@@ -1146,3 +1180,4 @@ if __name__ == '__main__':
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
         #precomputeTotalCount(field)
+    makeAdrianPlots()
