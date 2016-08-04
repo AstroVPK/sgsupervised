@@ -16,6 +16,7 @@ from astropy.coordinates import SkyCoord
 from sklearn.neighbors.kde import KernelDensity
 
 import dGauss
+import supervisedEtl as etl
 
 _fields = ['XMM', 'GAMA09', 'WIDE12H', 'GAMA15', 'HectoMap', 'VVDS', 'AEGIS']
 #_fields = ['AEGIS']
@@ -354,6 +355,16 @@ def getParallax(gHsc, rHsc, iHsc, zHsc, projected=False):
         magRAbsHsc = magRAbsSdss + cri[0] + cri[1]*riSdss + cri[2]*riSdss**2
     dKpc = np.power(10.0, (rHsc-magRAbsHsc)/5)/100
     return magRAbsHsc, dKpc
+
+def getParallaxFromRi(ri, projected=False):
+    iF = 20.0
+    gr = 0.158 + 1.936*ri
+    iz = -0.021 + 0.564*ri
+    rF = iF + ri
+    gF = rF + gr
+    zF = iF - iz
+    magRAbsHsc, dKpc = getParallax(gF, rF, iF, zF, projected=projected)
+    return magRAbsHsc
 
 def getJeffreysInterval(alpha, n, x):
     if not np.logical_and(0.0 < alpha, 1.0 > alpha):
@@ -1135,7 +1146,15 @@ def makeWideGallacticProjection(subsetSize=1000, fontSize=16):
     fig.savefig(os.path.join(dirHome, 'Desktop/wideProjection.png'), dpi=120, bbox_inches='tight')
     return fig
     
-def makeAdrianPlots():
+def _imf(m):
+    imf = np.zeros(m.shape)
+    low = np.logical_not(m > 1.0)
+    high = np.logical_not(low)
+    imf[low] = 0.158*1.0/m[low]*np.exp(-(np.log(m[low])-np.log(0.08))**2/(2*0.69**2))
+    imf[high] = 0.158*np.exp(-(-np.log(0.08))**2/(2*0.69**2))*np.power(m[high], -2.45)
+    return imf/np.sum(imf)
+
+def makeAdrianPlots(fontSize=18):
     sgr = np.genfromtxt("/u/garmilla/Desktop/SgrTriax_DYN.dat", 
                         delimiter=" ", dtype=None, names=True)
     sgr_c = SkyCoord(ra=sgr['ra']*units.degree, 
@@ -1147,27 +1166,99 @@ def makeAdrianPlots():
     hsc_fields = {'gama': hsc_gama, 'xmm': hsc_xmm}
     hsc_c = {name: SkyCoord(ra=np.asarray(f['ra'])*units.deg, dec=np.asarray(f['dec'])*units.deg)
              for name,f in hsc_fields.items()}
-    hsc_hulls = {name: Delaunay(np.vstack((c.galactic.l.degree, c.galactic.b.degree)).T) for name, c in hsc_c.items()}
-    sgr_pts = np.vstack((sgr_c.galactic.l.degree, sgr_c.galactic.l.degree)).T
+    hsc_hulls = {name: Delaunay(np.vstack((c.galactic.l.wrap_at(180*units.degree).degree, c.galactic.b.degree)).T) for name, c in hsc_c.items()}
+    sgr_pts = np.vstack((sgr_c.galactic.l.wrap_at(180*units.degree).degree, sgr_c.galactic.b.degree)).T
 
     sgr_in_hsc_idx = {}
     for name, hull in hsc_hulls.items():
         sgr_in_hsc_idx[name] = hull.find_simplex(sgr_pts) >= 0
 
-    fig, ax = plt.subplots(1,1,figsize=(15,8),subplot_kw=dict(projection='mollweide'))
+    fig = plt.figure(figsize=(15, 8), dpi=120)
+    ax = fig.add_subplot(111, projection='mollweide')
+    ax.grid()
 
     cb = ax.scatter(sgr_c.galactic.l.wrap_at(180*units.degree).radian, sgr_c.galactic.b.radian, 
-                   c=sgr_c.distance.kpc, vmin=3, vmax=60, s=2, edgecolors='none')
+                   c=sgr_c.distance.kpc, vmin=3, vmax=60, s=1, edgecolors='none')
 
-    for c in hsc_c.values():
-        ax.plot(c.galactic.l.wrap_at(180*units.degree).radian[::1000], c.galactic.b.radian[::1000], 
-                linestyle='none', marker=',', color='black')
+    for name, hull in hsc_hulls.items():
+        points = np.vstack((hsc_c[name].galactic.l.wrap_at(180*units.degree).radian, hsc_c[name].galactic.b.radian)).T
+        for c in hull.convex_hull:
+            plt.plot([points[c[0], 0], points[c[1], 0]], [points[c[0], 1], points[c[1], 1]], color='black')
 
     cbar = fig.colorbar(cb)
-    cbar.set_label('Dist. [kpc]')
+    cbar.set_label('Distance (kpc)', fontsize=fontSize)
+    ax.set_xlabel('l', fontsize=fontSize)
+    ax.set_ylabel('b', fontsize=fontSize)
+    ax.set_title('Law & Majewski Simulation', fontsize=fontSize)
 
-    plt.show()
+    cbar.ax.tick_params(labelsize=fontSize)
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
 
+    dirHome = os.path.expanduser('~')
+    fig.savefig(os.path.join(dirHome, 'Desktop/lawMajewskiAllSky.png'), dpi=120, bbox_inches='tight')
+
+    dist_bins = np.linspace(10.0, 100.0, num=11)
+
+    idxXmm = sgr_in_hsc_idx['xmm']
+    idxGama = sgr_in_hsc_idx['gama']
+
+    fig, axes = plt.subplots(1,2, figsize=(16, 6), dpi=120)
+    axes[0].hist(sgr_c.distance.kpc[idxXmm], bins=dist_bins, histtype='step', color='black')
+    axes[1].hist(sgr_c.distance.kpc[idxGama], bins=dist_bins, histtype='step', color='black')
+
+    axes[0].set_xlabel("Distance (kpc)", fontsize=fontSize)
+    axes[1].set_xlabel("Distance (kpc)", fontsize=fontSize)
+    axes[0].set_ylabel("Particles", fontsize=fontSize)
+    axes[1].set_ylabel("Particles", fontsize=fontSize)
+                                 
+    axes[0].set_title("XMM", fontsize=fontSize)
+    axes[1].set_title("GAMA15", fontsize=fontSize)
+
+    for ax in fig.get_axes():
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(fontSize)
+
+    fig.savefig(os.path.join(dirHome, 'Desktop/lawMajewskiHists.png'), dpi=120, bbox_inches='tight')
+
+    iRead = etl.IsochroneReader(stringZ='m10')
+    MLRat = 10.0
+    masses = iRead.isochrones[10.0]['M/Mo']
+    Ls = np.power(10.0, iRead.isochrones[10.0]['LogL/Lo'])
+    imf = _imf(masses)
+    LAvg = np.sum(Ls*imf)
+    totalCounts = {}
+    totalCount = 0
+    for i, field in enumerate(_fields):
+        totalCounts[field] = int(np.loadtxt('totalCount{0}.txt'.format(field)))
+        totalCount += totalCounts[field]
+    rAbs = iRead.isochrones[10.0]['LSST_r']
+    for field in ['XMM', 'GAMA15']:
+        if field == 'XMM':
+            MSgr = 6.4e8/1.0e5*np.sum(idxXmm) # Solar masses
+        elif field == 'GAMA15':
+            MSgr = 6.4e8/1.0e5*np.sum(idxGama) # Solar masses
+        Ns = MSgr/MLRat/LAvg
+        MT = Ns*np.sum(masses*imf)
+        areaFactor = 100.0*totalCounts[field]/totalCount
+        print 'Field: {0}'.format(field)
+        riMin=0.0; riMax=0.4; nBins=8
+        width = (riMax - riMin)/nBins
+        binMin = riMin
+        for i in range(nBins):
+            binMax = binMin + width
+            rAbsMin = getParallaxFromRi(np.array([binMin]))
+            rAbsMax = getParallaxFromRi(np.array([binMax]))
+            inBin = np.logical_and(rAbs >= rAbsMin, rAbs <= rAbsMax)
+            pMass = np.sum(imf[inBin])
+            print "Bin {0} < r-i < {1}: {2} Stars, {3} Stars/deg^2".format(binMin, binMax, Ns*pMass, Ns*pMass/areaFactor)
+            binMin += width
+    
 if __name__ == '__main__':
     #field = 'deep'
     #computeFieldPosteriors(field, chunksize=1000000)
