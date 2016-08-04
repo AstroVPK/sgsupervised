@@ -1155,14 +1155,20 @@ def _imf(m):
     return imf/np.sum(imf)
 
 def makeAdrianPlots(fontSize=18):
-    sgr = np.genfromtxt("/u/garmilla/Desktop/SgrTriax_DYN.dat", 
-                        delimiter=" ", dtype=None, names=True)
+    try:
+        sgr = np.genfromtxt("/u/garmilla/Desktop/SgrTriax_DYN.dat", 
+                            delimiter=" ", dtype=None, names=True)
+        hsc_gama = pd.read_csv("/u/garmilla/Desktop/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_xmm = pd.read_csv("/u/garmilla/Desktop/xmmRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+    except IOError:
+        sgr = np.genfromtxt("/home/jose/Data/SgrTriax_DYN.dat", 
+                            delimiter=" ", dtype=None, names=True)
+        hsc_gama = pd.read_csv("/home/jose/Data/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_xmm = pd.read_csv("/home/jose/Data/xmmRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
     sgr_c = SkyCoord(ra=sgr['ra']*units.degree, 
-                           dec=sgr['dec']*units.degree,
-                           distance=sgr['dist']*units.kpc)
+                     dec=sgr['dec']*units.degree,
+                     distance=sgr['dist']*units.kpc)
 
-    hsc_gama = pd.read_csv("/u/garmilla/Desktop/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
-    hsc_xmm = pd.read_csv("/u/garmilla/Desktop/xmmRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
     hsc_fields = {'gama': hsc_gama, 'xmm': hsc_xmm}
     hsc_c = {name: SkyCoord(ra=np.asarray(f['ra'])*units.deg, dec=np.asarray(f['dec'])*units.deg)
              for name,f in hsc_fields.items()}
