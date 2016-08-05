@@ -1233,11 +1233,15 @@ def makeAdrianPlots(fontSize=18):
     fig.savefig(os.path.join(dirHome, 'Desktop/lawMajewskiHists.png'), dpi=120, bbox_inches='tight')
 
     iRead = etl.IsochroneReader(stringZ='m10')
+    MSgr = 6.4e8 # Solar masses
     MLRat = 10.0
     masses = iRead.isochrones[10.0]['M/Mo']
     Ls = np.power(10.0, iRead.isochrones[10.0]['LogL/Lo'])
     imf = _imf(masses)
     LAvg = np.sum(Ls*imf)
+    print "Average luminosity: {0}".format(LAvg)
+    NTotal = MSgr/MLRat/LAvg
+    print "Total number of stars: {0}".format(NTotal)
     totalCounts = {}
     totalCount = 0
     for i, field in enumerate(_fields):
