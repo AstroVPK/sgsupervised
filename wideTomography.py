@@ -1158,18 +1158,29 @@ def makeAdrianPlots(fontSize=18):
     try:
         sgr = np.genfromtxt("/u/garmilla/Desktop/SgrTriax_DYN.dat", 
                             delimiter=" ", dtype=None, names=True)
-        hsc_gama = pd.read_csv("/u/garmilla/Desktop/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_gama15 = pd.read_csv("/u/garmilla/Desktop/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_gama09 = pd.read_csv("/u/garmilla/Desktop/gama09RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_aegis = pd.read_csv("/u/garmilla/Desktop/aegisRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_wide12h = pd.read_csv("/u/garmilla/Desktop/wide12hRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_hectomap = pd.read_csv("/u/garmilla/Desktop/hectomapRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_vvds = pd.read_csv("/u/garmilla/Desktop/vvdsRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
         hsc_xmm = pd.read_csv("/u/garmilla/Desktop/xmmRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
     except IOError:
         sgr = np.genfromtxt("/home/jose/Data/SgrTriax_DYN.dat", 
                             delimiter=" ", dtype=None, names=True)
-        hsc_gama = pd.read_csv("/home/jose/Data/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_gama15 = pd.read_csv("/home/jose/Data/gama15RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_gama09 = pd.read_csv("/home/jose/Data/gama09RaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_aegis = pd.read_csv("/home/jose/Data/aegisRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_wide12h = pd.read_csv("/home/jose/Data/wide12hRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_hectomap = pd.read_csv("/home/jose/Data/hectomapRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
+        hsc_vvds = pd.read_csv("/home/jose/Data/vvdsRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
         hsc_xmm = pd.read_csv("/home/jose/Data/xmmRaDec.txt", sep=" ", names=['ra', 'dec'], skiprows=1)
     sgr_c = SkyCoord(ra=sgr['ra']*units.degree, 
                      dec=sgr['dec']*units.degree,
                      distance=sgr['dist']*units.kpc)
 
-    hsc_fields = {'gama': hsc_gama, 'xmm': hsc_xmm}
+    hsc_fields = {'gama15': hsc_gama15, 'gama09': hsc_gama09, 'aegis': hsc_aegis, 'wide12h': hsc_wide12h, 'hectomap': hsc_hectomap, 'vvds': hsc_vvds, 'xmm': hsc_xmm}
+    hsc_colors = {'gama15': 'cyan', 'gama09': 'green', 'aegis': 'black', 'wide12h': 'red', 'hectomap': 'magenta', 'vvds': 'yellow', 'xmm':'blue'} 
     hsc_c = {name: SkyCoord(ra=np.asarray(f['ra'])*units.deg, dec=np.asarray(f['dec'])*units.deg)
              for name,f in hsc_fields.items()}
     hsc_hulls = {name: Delaunay(np.vstack((c.galactic.l.wrap_at(180*units.degree).degree, c.galactic.b.degree)).T) for name, c in hsc_c.items()}
@@ -1189,7 +1200,7 @@ def makeAdrianPlots(fontSize=18):
     for name, hull in hsc_hulls.items():
         points = np.vstack((hsc_c[name].galactic.l.wrap_at(180*units.degree).radian, hsc_c[name].galactic.b.radian)).T
         for c in hull.convex_hull:
-            plt.plot([points[c[0], 0], points[c[1], 0]], [points[c[0], 1], points[c[1], 1]], color='black')
+            plt.plot([points[c[0], 0], points[c[1], 0]], [points[c[0], 1], points[c[1], 1]], color=hsc_colors[name])
 
     cbar = fig.colorbar(cb)
     cbar.set_label('Distance (kpc)', fontsize=fontSize)
@@ -1210,11 +1221,11 @@ def makeAdrianPlots(fontSize=18):
     dist_bins = np.linspace(10.0, 100.0, num=11)
 
     idxXmm = sgr_in_hsc_idx['xmm']
-    idxGama = sgr_in_hsc_idx['gama']
+    idxGama15 = sgr_in_hsc_idx['gama15']
 
     fig, axes = plt.subplots(1,2, figsize=(16, 6), dpi=120)
     axes[0].hist(sgr_c.distance.kpc[idxXmm], bins=dist_bins, histtype='step', color='black')
-    axes[1].hist(sgr_c.distance.kpc[idxGama], bins=dist_bins, histtype='step', color='black')
+    axes[1].hist(sgr_c.distance.kpc[idxGama15], bins=dist_bins, histtype='step', color='black')
 
     axes[0].set_xlabel("Distance (kpc)", fontsize=fontSize)
     axes[1].set_xlabel("Distance (kpc)", fontsize=fontSize)
@@ -1252,7 +1263,7 @@ def makeAdrianPlots(fontSize=18):
         if field == 'XMM':
             MSgr = 6.4e8/1.0e5*np.sum(idxXmm) # Solar masses
         elif field == 'GAMA15':
-            MSgr = 6.4e8/1.0e5*np.sum(idxGama) # Solar masses
+            MSgr = 6.4e8/1.0e5*np.sum(idxGama15) # Solar masses
         Ns = MSgr/MLRat/LAvg
         MT = Ns*np.sum(masses*imf)
         areaFactor = 100.0*totalCounts[field]/totalCount
