@@ -527,6 +527,7 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
             axes[j].plot(binCenters, haloModel*counts[0]/binCenters[0]*correction[0]/areaFactor/haloModel[0], color=_colors[i], linestyle='-')
             axes[j].errorbar(binCenters, counts/binCenters*correction/areaFactor, yerr=error/binCenters/areaFactor, fmt='o', color=_colors[i],
                              label=r'Limit = {:2.0f} kpc'.format(dKpcGal[0]))
+            print "Total excess counts in {0} is: {1}".format(field, np.sum(counts/binCenters*correction/areaFactor-haloModel*counts[0]/binCenters[0]*correction[0]/areaFactor/haloModel[0]))
             axes[j].plot([dKpcGal[0], dKpcGal[0]], [0.05, 40.0], linestyle='--', color=_colors[i])
             if (counts/binCenters*correction/areaFactor).max() > maxCounts[j]:
                 maxCounts[j] = (counts/binCenters*correction/areaFactor).max()
@@ -1285,11 +1286,11 @@ if __name__ == '__main__':
     #computeFieldPosteriors(field, chunksize=1000000)
     #makeCCDiagrams(field)
     #makeWideGallacticProjection()
-    #makeTomographyCBins()
+    makeTomographyCBins()
     #genDBPosts('HectoMap')
     #preLoadField('XMM')
     #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
         #precomputeTotalCount(field)
-    makeAdrianPlots()
+    #makeAdrianPlots()
