@@ -511,6 +511,8 @@ def makeTomographyCBins(riMin=0.0, riMax=0.4, nBins=8, nBinsD=10, subsetSize=100
                 ZStar = binCenters*sinBStar
                 haloModel = normalH*np.power(np.sqrt(binCenters**2+(ZStar/qH)**2), -nH)
             dKpcGal = np.sqrt(8.0**2 + dKpc**2 - 2*8.0*dKpc*np.cos(b)*np.cos(l))
+            if field == 'XMM' or field == 'GAMA15':
+                print "Distance limit for field {0} in bin {1} < r-i < {2}: {3}".format(field, binMin, binMax, dKpcGal)
             for k in range(len(correction)):
                 if completeness[j][k][0] == 0.0 or completeness[j][k][1] == 0.0 or\
                    purity[j][k][0] == 0.0 or purity[j][k][1] == 0.0 or\
@@ -1245,14 +1247,15 @@ def makeAdrianPlots(fontSize=18):
 
     fig.savefig(os.path.join(dirHome, 'Desktop/lawMajewskiHists.png'), dpi=120, bbox_inches='tight')
 
-    iRead = etl.IsochroneReader(stringZ='m10')
+    iRead = etl.IsochroneReader(iType='UBVRIJHKsKp', stringZ='m10')
     MSgr = 6.4e8 # Solar masses
     MLRat = 10.0
     masses = iRead.isochrones[10.0]['M/Mo']
-    Ls = np.power(10.0, iRead.isochrones[10.0]['LogL/Lo'])
+    Ls = np.power(10.0, -2.0/5*(iRead.isochrones[10.0]['V'] - 4.14))
     imf = _imf(masses)
     LAvg = np.sum(Ls*imf)
     print "Average luminosity: {0}".format(LAvg)
+    LAvg = 0.064
     NTotal = MSgr/MLRat/LAvg
     print "Total number of stars: {0}".format(NTotal)
     totalCounts = {}
@@ -1260,20 +1263,25 @@ def makeAdrianPlots(fontSize=18):
     for i, field in enumerate(_fields):
         totalCounts[field] = int(np.loadtxt('totalCount{0}.txt'.format(field)))
         totalCount += totalCounts[field]
+    iRead = etl.IsochroneReader(stringZ='m10')
     rAbs = iRead.isochrones[10.0]['LSST_r']
     for field in ['XMM', 'GAMA15']:
-        if field == 'XMM':
-            MSgr = 6.4e8/1.0e5*np.sum(idxXmm) # Solar masses
-        elif field == 'GAMA15':
-            MSgr = 6.4e8/1.0e5*np.sum(idxGama15) # Solar masses
-        Ns = MSgr/MLRat/LAvg
-        MT = Ns*np.sum(masses*imf)
         areaFactor = 100.0*totalCounts[field]/totalCount
         print 'Field: {0}'.format(field)
         riMin=0.0; riMax=0.4; nBins=8
         width = (riMax - riMin)/nBins
         binMin = riMin
+        dLimXmm = [92.0, 77.0, 65.0, 56.0, 49.0, 43.0, 39.0, 35.0]
+        dLimGama15 = [84.0, 68.0, 56.0, 47.0, 40.0, 35.0, 30.0, 27.0]
         for i in range(nBins):
+            idxXmmObs = np.logical_and(idxXmm, sgr_c.distance.kpc <= dLimXmm[i])
+            idxGama15Obs = np.logical_and(idxGama15, sgr_c.distance.kpc <= dLimGama15[i])
+            if field == 'XMM':
+                MSgr = 6.4e8/1.0e5*np.sum(idxXmmObs) # Solar masses
+            elif field == 'GAMA15':
+                MSgr = 6.4e8/1.0e5*np.sum(idxGama15Obs) # Solar masses
+            Ns = MSgr/MLRat/LAvg
+            MT = Ns*np.sum(masses*imf)
             binMax = binMin + width
             rAbsMin = getParallaxFromRi(np.array([binMin]))
             rAbsMax = getParallaxFromRi(np.array([binMax]))
@@ -1287,11 +1295,11 @@ if __name__ == '__main__':
     #computeFieldPosteriors(field, chunksize=1000000)
     #makeCCDiagrams(field)
     #makeWideGallacticProjection()
-    makeTomographyCBins()
+    #makeTomographyCBins()
     #genDBPosts('HectoMap')
     #preLoadField('XMM')
     #for field in _fields:
         #makeCCDiagrams(field)
         #precomputeRadialCounts(field, subsetSize=None)
         #precomputeTotalCount(field)
-    #makeAdrianPlots()
+    makeAdrianPlots()
