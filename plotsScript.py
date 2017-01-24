@@ -21,7 +21,7 @@ import supervisedEtl as etl
 import dGauss
 import utils
 
-depth = 'udeep'
+depth = 'udeepwide'
 
 sgsDir = os.path.join(os.environ['EUPS_PATH'], '..', '..', 'sgs')
 matchedCatFile = os.path.join(sgsDir, '%sHscClass.fits'%(depth))
@@ -2236,6 +2236,11 @@ def cosmosWideSvmScores(trainXd=False, trainSvm=False, fontSize=18):
 
 
 def makeRachelPlots(depth=depth, fontSize=18):
+    """Quantify the purity of a given galaxy sample.
+
+    Create a few plots to quantify the purity of a given galaxy sample (i.e., what fraction of the “galaxies”
+    are actually galaxies and not stars).
+    """
     with open(classifierFile, 'rb') as f:
         clfs = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
@@ -2245,11 +2250,11 @@ def makeRachelPlots(depth=depth, fontSize=18):
     predHsc = cat.get('iclassification_extendedness')
     ids = cat.get('id2')
     clfHsc = etl.ClfHsc(ids, predHsc)
-    with open('hscClf{0}.pkl'.format(depth), 'w') as f:
+    with open(os.path.join(sgsDir, 'hscClf{0}.pkl'.format(depth)), 'w') as f:
         pickle.dump(clfHsc, f)
     trainSet = etl.extractTrainSet(cat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True,
                                    mode='colors', concatBands=False, fromDB=True)
-    with open('hscClass{0}.pkl'.format(depth), 'w') as f:
+    with open(os.path.join(sgsDir, 'hscClass{0}.pkl'.format(depth)), 'w') as f:
         pickle.dump(trainSet, f)
     X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
     gals = np.logical_not(Y)
@@ -2342,6 +2347,16 @@ def makeRachelPlots(depth=depth, fontSize=18):
     axGal.set_xlim((18.0, 25.0))
     fig.suptitle(depth, fontsize=fontSize)
 
+    '''
+    axGal.step(magGridCenters, compGalsXd1,
+               color='red', linestyle='-.', label='P(Star)=0.1 Cut Completeness')
+    axGal.step(magGridCenters, purityGalsXd1,
+               color='blue', linestyle='-.', label='P(Star)=0.1 Cut Purity')
+    axStar.step(magGridCenters, compStarsXd1,
+                color='red', linestyle='-.', label='P(Star)=0.1 Cut Completeness')
+    axStar.step(magGridCenters, purityStarsXd1,
+                color='blue', linestyle='-.', label='P(Star)=0.1 Cut Purity')
+    '''
     axGal.step(magGridCenters, compGalsXd5,
                color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
     axGal.step(magGridCenters, purityGalsXd5,
@@ -2408,5 +2423,5 @@ if __name__ == '__main__':
     # makeRachelPlots(depth='udeep')
     # xdColExtFitScoresComb()
 
-    # xdColExtFitScores()
-    makeRachelPlots(depth='udeep')
+    # xdColExtFitScores(trainClfs=True)
+    makeRachelPlots(depth='udeepwide')
