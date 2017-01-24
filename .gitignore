@@ -1,1 +1,5 @@
+*.pdf
 *.csv
+*.fits
+*.pkl
+*.png

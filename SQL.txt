@@ -1,71 +1,63 @@
 -- Jose Garmilla's SQL Query to get HSC catalogs
 -- SQL:
 --
--- UDEEP
+-- COSMOS WIDE Median With Extendedness Classification
 --
-SELECT phot.id, phot.ra2000, phot.decl2000,
-  phot.gmag_cmodel-phot.a_g as gmag, phot.gmag_cmodel_err,
-  phot.rmag_cmodel-phot.a_r as rmag, phot.rmag_cmodel_err,
-  phot.imag_cmodel-phot.a_i as imag, phot.imag_cmodel_err,
-  phot.zmag_cmodel-phot.a_z as zmag, phot.zmag_cmodel_err,
-  phot.ymag_cmodel-phot.a_y as ymag, phot.ymag_cmodel_err,
-  phot.gmag_psf-phot.gmag_cmodel as gext, phot.gmag_psf_err,
-  phot.rmag_psf-phot.rmag_cmodel as rext, phot.rmag_psf_err,
-  phot.imag_psf-phot.imag_cmodel as iext, phot.imag_psf_err,
-  phot.zmag_psf-phot.zmag_cmodel as zext, phot.zmag_psf_err,
-  phot.ymag_psf-phot.ymag_cmodel as yext, phot.ymag_psf_err
+SELECT phot.object_id, phot.ra, phot.dec,
+phot.gcmodel_mag-phot.a_g as gmag, phot.gcmodel_mag_err,
+          phot.rcmodel_mag-phot.a_r as rmag, phot.rcmodel_mag_err,
+          phot.icmodel_mag-phot.a_i as imag, phot.icmodel_mag_err,
+          phot.zcmodel_mag-phot.a_z as zmag, phot.zcmodel_mag_err,
+          phot.ycmodel_mag-phot.a_y as ymag, phot.ycmodel_mag_err,
+phot.gmag_psf-phot.gcmodel_mag as gext, phot.gmag_psf_err,
+phot.rmag_psf-phot.rcmodel_mag as rext, phot.rmag_psf_err,
+phot.imag_psf-phot.icmodel_mag as iext, phot.imag_psf_err,
+phot.zmag_psf-phot.zcmodel_mag as zext, phot.zmag_psf_err,
+phot.ymag_psf-phot.ycmodel_mag as yext, phot.ymag_psf_err,
+          phot.gclassification_extendedness,
+phot.rclassification_extendedness,
+          phot.iclassification_extendedness,
+          phot.zclassification_extendedness,
+          phot.yclassification_extendedness
 
-FROM  s15b_udeep.photoobj_mosaic__deepcoadd__merged    AS phot
- JOIN s15b_udeep.mosaic_forceflag_g__deepcoadd__merged AS g_flag
-   USING(id)
- JOIN s15b_udeep.mosaic_forceflag_r__deepcoadd__merged AS r_flag
-   USING(id)
- JOIN s15b_udeep.mosaic_forceflag_i__deepcoadd__merged AS i_flag
-   USING(id)
- JOIN s15b_udeep.mosaic_forceflag_z__deepcoadd__merged AS z_flag
-   USING(id)
- JOIN s15b_udeep.mosaic_forceflag_y__deepcoadd__merged AS y_flag
-   USING(id)
- JOIN s15b_udeep.mosaic_refflag_x__deepcoadd           AS ref_flag
-   USING(id)
- JOIN s15b_udeep.mosaic_reflist__deepcoadd             AS ref_list
-   USING(id)
+FROM s15b_udeep_wide_depth_median.forced AS phot
 
-WHERE r_flag.centroid_sdss_flags is not True
- AND  i_flag.centroid_sdss_flags is not True
- AND  z_flag.centroid_sdss_flags is not True
- AND  y_flag.centroid_sdss_flags is not True
+ WHERE  phot.gcentroid_sdss_flags is not True
+ AND  phot.rcentroid_sdss_flags is not True
+ AND  phot.icentroid_sdss_flags is not True
+ AND  phot.zcentroid_sdss_flags is not True
+ AND  phot.ycentroid_sdss_flags is not True
 
- AND  g_flag.flags_pixel_edge is not True
- AND  r_flag.flags_pixel_edge is not True
- AND  i_flag.flags_pixel_edge is not True
- AND  z_flag.flags_pixel_edge is not True
- AND  y_flag.flags_pixel_edge is not True
+ AND  phot.gflags_pixel_edge is not True
+ AND  phot.rflags_pixel_edge is not True
+ AND  phot.iflags_pixel_edge is not True
+ AND  phot.zflags_pixel_edge is not True
+ AND  phot.yflags_pixel_edge is not True
 
- AND  g_flag.flags_pixel_saturated_center is not True
- AND  r_flag.flags_pixel_saturated_center is not True
- AND  i_flag.flags_pixel_saturated_center is not True
- AND  z_flag.flags_pixel_saturated_center is not True
- AND  y_flag.flags_pixel_saturated_center is not True
+ AND  phot.gflags_pixel_saturated_center is not True
+ AND  phot.rflags_pixel_saturated_center is not True
+ AND  phot.iflags_pixel_saturated_center is not True
+ AND  phot.zflags_pixel_saturated_center is not True
+ AND  phot.yflags_pixel_saturated_center is not True
 
- AND  g_flag.flags_pixel_cr_any is not True
- AND  r_flag.flags_pixel_cr_any is not True
- AND  i_flag.flags_pixel_cr_any is not True
- AND  z_flag.flags_pixel_cr_any is not True
- AND  y_flag.flags_pixel_cr_any is not True
+ AND  phot.gflags_pixel_cr_any is not True
+ AND  phot.rflags_pixel_cr_any is not True
+ AND  phot.iflags_pixel_cr_any is not True
+ AND  phot.zflags_pixel_cr_any is not True
+ AND  phot.yflags_pixel_cr_any is not True
 
- AND  g_flag.flags_pixel_bad is not True
- AND  r_flag.flags_pixel_bad is not True
- AND  i_flag.flags_pixel_bad is not True
- AND  z_flag.flags_pixel_bad is not True
- AND  y_flag.flags_pixel_bad is not True
+ AND  phot.gflags_pixel_bad is not True
+ AND  phot.rflags_pixel_bad is not True
+ AND  phot.iflags_pixel_bad is not True
+ AND  phot.zflags_pixel_bad is not True
+ AND  phot.yflags_pixel_bad is not True
 
- AND  g_flag.cmodel_flux_flags is not True
- AND  r_flag.cmodel_flux_flags is not True
- AND  i_flag.cmodel_flux_flags is not True
- AND  z_flag.cmodel_flux_flags is not True
- AND  y_flag.cmodel_flux_flags is not True
+ AND  phot.gcmodel_flux_flags is not True
+ AND  phot.rcmodel_flux_flags is not True
+ AND  phot.icmodel_flux_flags is not True
+ AND  phot.zcmodel_flux_flags is not True
+ AND  phot.ycmodel_flux_flags is not True
 
- AND  ref_list.deblend_nchild =0
- AND  ref_list.detect_is_primary is True
+ AND  phot.deblend_nchild =0
+ AND  phot.detect_is_primary is True
 ;
