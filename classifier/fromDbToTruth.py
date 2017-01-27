@@ -2,10 +2,13 @@ from __future__ import print_function
 import os
 import csv
 import numpy as np
+import cPickle as pickle
 
 import lsst.afw.table as afwTable
 
 import fsButler.utils as fsUtils
+
+import supervisedEtl as etl
 
 depth = 'udeepwide'
 
@@ -15,7 +18,8 @@ inputDir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "input
 
 selectSG = os.path.join(inputDir, 'cosmos_sg_all.fits')  # Alexii's catalog
 inputFile = os.path.join(inputDir, '%s.csv'%(depth))  # Reduction of the COSMOS field
-outputFile = os.path.join(inputDir, '%sHscClass.fits'%(depth))
+matchedCatFile = os.path.join(inputDir, '%sHscClass.fits'%(depth))
+trainSetFile = os.path.join(inputDir, '%sTrainSet.pkl'%(depth))
 
 with open(inputFile) as f:
     for i, l in enumerate(f):
@@ -69,5 +73,9 @@ for c in cList:
 
 sgTable = afwTable.SimpleCatalog.readFits(selectSG)
 
-match = fsUtils.matchCats(sgTable, cat, multiMeas=False, includeMismatches=True)
-match.writeFits(outputFile)
+matchedCat = fsUtils.matchCats(sgTable, cat, multiMeas=False, includeMismatches=True)
+matchedCat.writeFits(matchedCatFile)
+
+trainSet = etl.extractTrainSet(matchedCat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True,
+                               mode='colors', concatBands=False, fromDB=True)
+pickle.dump(trainSet, open(trainSetFile, 'wb'))
