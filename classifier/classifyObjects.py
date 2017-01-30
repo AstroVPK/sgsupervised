@@ -47,28 +47,27 @@ for i in range(fileLen):
 idCol = np.zeros((fileLen,), dtype=long)
 raCol = np.zeros((fileLen,))
 declCol = np.zeros((fileLen,))
-# photArr = np.zeros((fileLen, 20))
 photArr = np.zeros((fileLen, 25))
 with open(inputFile, 'r') as f:
-    reader = csv.reader(f, delimiter=',')
-    reader.next()  # Skip comments
-    for line in reader:
-        i = reader.line_num - 2
-        idCol[i] = long(line[0])
+    line = f.readline()
+    record = 0
+    for line in f:
+        words = line.rstrip('\n').split(',')
+        idCol[record] = long(words[0])
         try:
-            raCol[i] = float(line[1])
+            raCol[record] = float(words[1])
         except ValueError:
-            raCol[i] = None
+            raCol[record] = None
         try:
-            declCol[i] = float(line[2])
+            declCol[record] = float(words[2])
         except ValueError:
-            declCol[i] = None
+            declCol[record] = None
         for j in range(3, 28):
-            # for j in range(3, 23):
             try:
-                photArr[i, j-3] = float(line[j])
+                photArr[record, j-3] = float(words[j])
             except ValueError:
-                photArr[i, j-3] = None
+                photArr[record, j-3] = None
+        record += 1
 cat.get('id')[:] = idCol
 cat.get('coord_ra')[:] = np.radians(raCol)
 cat.get('coord_dec')[:] = np.radians(declCol)
@@ -102,3 +101,36 @@ with open(classifierFile, 'rb') as f:
     clfs = pickle.load(f)
 clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
 posteriors = clfXd.predict_proba(X, XErr, mags)  # Posterior likelihood that something is a star...
+
+ids = classifySet.getAllIds()
+rexts = np.zeros(ids.shape[0])
+rmags = np.zeros(ids.shape[0])
+iexts = np.zeros(ids.shape[0])
+imags = np.zeros(ids.shape[0])
+idsCat = cat.get('id')
+rextCat = cat.get('rext')
+rmagCat = cat.get('rmag')
+iextCat = cat.get('iext')
+imagCat = cat.get('imag')
+for i in xrange(ids.shape[0]):
+    index = np.where(ids[i] == idsCat)[0][0]
+    rexts[i] = rextCat[index]
+    rmags[i] = rmagCat[index]
+    iexts[i] = iextCat[index]
+    imags[i] = imagCat[index]
+
+fig = plt.figure(1)
+plt.scatter(rmags, rexts, c=posteriors, edgecolors='none')
+plt.xlabel('$mag_{\mathrm{r}, \mathrm{cmodel}}$')
+plt.ylabel('$mag_{\mathrm{r}, \mathrm{psf}} - mag_{\mathrm{r}, \mathrm{cmodel}}$')
+cBar = plt.colorbar()
+cBar.set_label('$\mathfrak{P}(\mathrm{star})$')
+fig.savefig(os.path.join(sgsDir, '%sClassifyRes_r.png'%(depth)), dpi=120, bbox_inches='tight')
+
+fig = plt.figure(2)
+plt.scatter(imags, iexts, c=posteriors, edgecolors='none')
+plt.xlabel('$mag_{\mathrm{i}, \mathrm{cmodel}}$')
+plt.ylabel('$mag_{\mathrm{i}, \mathrm{psf}} - mag_{\mathrm{i}, \mathrm{cmodel}}$')
+cBar = plt.colorbar()
+cBar.set_label('$\mathfrak{P}(\mathrm{star})$')
+fig.savefig(os.path.join(sgsDir, '%sClassifyRes_i.png'%(depth)), dpi=120, bbox_inches='tight')

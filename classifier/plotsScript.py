@@ -2426,5 +2426,5 @@ if __name__ == '__main__':
     # makeRachelPlots(depth='udeep')
     # xdColExtFitScoresComb()
 
-    # xdColExtFitScores(trainClfs=True)
+    xdColExtFitScores(trainClfs=True)
     makeRachelPlots(depth='udeepwide')

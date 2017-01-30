@@ -45,24 +45,25 @@ raCol = np.zeros((fileLen,))
 declCol = np.zeros((fileLen,))
 photArr = np.zeros((fileLen, 25))
 with open(inputFile, 'r') as f:
-    reader = csv.reader(f, delimiter=',')
-    reader.next()  # Skip comments
-    for line in reader:
-        i = reader.line_num - 2
-        idCol[i] = long(line[0])
+    line = f.readline()
+    record = 0
+    for line in f:
+        words = line.rstrip('\n').split(',')
+        idCol[record] = long(words[0])
         try:
-            raCol[i] = float(line[1])
+            raCol[record] = float(words[1])
         except ValueError:
-            raCol[i] = None
+            raCol[record] = None
         try:
-            declCol[i] = float(line[2])
+            declCol[record] = float(words[2])
         except ValueError:
-            declCol[i] = None
+            declCol[record] = None
         for j in range(3, 28):
             try:
-                photArr[i, j-3] = float(line[j])
+                photArr[record, j-3] = float(words[j])
             except ValueError:
-                photArr[i, j-3] = None
+                photArr[record, j-3] = None
+        record += 1
 cat.get('id')[:] = idCol
 cat.get('coord_ra')[:] = np.radians(raCol)
 cat.get('coord_dec')[:] = np.radians(declCol)
