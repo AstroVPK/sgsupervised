@@ -4,39 +4,45 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 
-import lsst.afw.table as afwTable
-from lsst.pex.exceptions import LsstCppException
-
 from sklearn.grid_search import GridSearchCV
+
+import lsst.afw.table as afwTable
+import lsst.pex.exceptions
 
 import sgSVM as sgsvm
 
-kargOutlier = {'g': {'lOffsetStar':-3.5, 'starDiff':4.0, 'lOffsetGal':-2.8, 'galDiff':4.9},
-               'r': {'lOffsetStar':-2.9, 'starDiff':3.4, 'lOffsetGal':-2.5, 'galDiff':4.8},
-               'i': {'lOffsetStar':-0.05, 'starDiff':0.58, 'lOffsetGal':-2.3, 'galDiff':4.5},
-               'z': {'lOffsetStar':1.0, 'starDiff':0.2, 'lOffsetGal':-1.0, 'galDiff':3.9},
-               'y': {'lOffsetStar':1.4, 'starDiff':0.2, 'lOffsetGal':-1.6, 'galDiff':4.6},
-              }
+kargOutlier = {'g': {'lOffsetStar': -3.5, 'starDiff': 4.0, 'lOffsetGal': -2.8, 'galDiff': 4.9},
+               'r': {'lOffsetStar': -2.9, 'starDiff': 3.4, 'lOffsetGal': -2.5, 'galDiff': 4.8},
+               'i': {'lOffsetStar': -0.05, 'starDiff': 0.58, 'lOffsetGal': -2.3, 'galDiff': 4.5},
+               'z': {'lOffsetStar': 1.0, 'starDiff': 0.2, 'lOffsetGal': -1.0, 'galDiff': 3.9},
+               'y': {'lOffsetStar': 1.4, 'starDiff': 0.2, 'lOffsetGal': -1.6, 'galDiff': 4.6},
+               }
+
 
 def dropMatchOutliers(cat, good=True, band='i', lOffsetStar=0.2, starDiff=0.3, lOffsetGal=2.0, galDiff=0.8):
     try:
-        flux = cat.get('cmodel.flux.'+band)
-        fluxZero = cat.get('flux.zeromag.'+band)
+        flux = cat.get('cmodel_flux_' + band)
+        fluxZero = cat.get('flux_zeromag_' + band)
         mag = -2.5*np.log10(flux/fluxZero)
     except KeyError:
-        mag = cat.get(band+'mag')
+        mag = cat.get(band + 'mag')
     noMeas = np.logical_not(np.isfinite(mag))
-    magAuto = cat.get('mag.auto')
+    magAuto = cat.get('mag_auto')
     try:
         stellar = cat.get('stellar')
     except KeyError:
-        stellar = cat.get('mu.class') == 2
-    goodStar = np.logical_or(noMeas, np.logical_and(good, np.logical_and(stellar, np.logical_and(mag < magAuto + starDiff, mag > magAuto - lOffsetStar - starDiff))))
-    goodGal = np.logical_or(noMeas, np.logical_and(good, np.logical_and(np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff, mag > magAuto - lOffsetGal - galDiff))))
+        stellar = cat.get('mu_class') == 2
+    goodStar = np.logical_or(
+        noMeas, np.logical_and(good, np.logical_and(stellar, np.logical_and(
+            mag < magAuto + starDiff, mag > magAuto - lOffsetStar - starDiff))))
+    goodGal = np.logical_or(noMeas, np.logical_and(good, np.logical_and(
+        np.logical_not(stellar), np.logical_and(mag < magAuto + galDiff,
+                                                mag > magAuto - lOffsetGal - galDiff))))
 
     good = np.logical_or(goodStar, goodGal)
 
     return good
+
 
 def getGoodStats(cat, bands=['g', 'r', 'i', 'z', 'y']):
     if 'g' in bands:
@@ -74,8 +80,10 @@ def getGoodStats(cat, bands=['g', 'r', 'i', 'z', 'y']):
             hasPhotY = np.isfinite(cat.get('ymag'))
     else:
         hasPhotY = np.zeros(len(cat), dtype=bool)
-    hasPhotAny = np.logical_or(np.logical_or(np.logical_or(hasPhotG, hasPhotR), np.logical_or(hasPhotI, hasPhotZ)), hasPhotY)
-    print "I removed {0} objects that don't have photometry in any band".format(len(hasPhotAny) - np.sum(hasPhotAny))
+    hasPhotAny = np.logical_or(np.logical_or(np.logical_or(hasPhotG, hasPhotR),
+                                             np.logical_or(hasPhotI, hasPhotZ)), hasPhotY)
+    print "I removed {0} objects that don't have photometry in any\
+    band".format(len(hasPhotAny) - np.sum(hasPhotAny))
     good = hasPhotAny
     for band in bands:
         try:
@@ -85,111 +93,124 @@ def getGoodStats(cat, bands=['g', 'r', 'i', 'z', 'y']):
         except KeyError:
             ext = cat.get(band+'ext')
         noExtExt = np.logical_and(good, ext < 5.0)
-        print "I removed {0} objects with extreme extendedness in {1}".format(np.sum(good)-np.sum(noExtExt), band)
+        print "I removed {0} objects with extreme extendedness\
+        in {1}".format(np.sum(good) - np.sum(noExtExt), band)
         good = noExtExt
-        noMatchOutlier = np.logical_and(good, dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band]))
+        noMatchOutlier = np.logical_and(good,
+                                        dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band]))
         print "I removed {0} match outliers in {1}".format(np.sum(good)-np.sum(noMatchOutlier), band)
         good = noMatchOutlier
     return good
 
+
 def getGood(cat, band='i', magCut=None, noParent=False, iBandCut=True):
-    #if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
+    # if not isinstance(cat, afwTable.tableLib.SourceCatalog) and\
     #   not isinstance(cat, afwTable.tableLib.SimpleCatalog):
     #    cat = afwTable.SourceCatalog.readFits(cat)
-    #flux = cat.get('cmodel.flux.'+band)
-    #fluxPsf = cat.get('flux.psf.'+band)
-    #ext = -2.5*np.log10(fluxPsf/flux)
-    #good = np.logical_and(True, ext < 5.0)
-    #if iBandCut:
+    # flux = cat.get('cmodel.flux.'+band)
+    # fluxPsf = cat.get('flux.psf.'+band)
+    # ext = -2.5*np.log10(fluxPsf/flux)
+    # good = np.logical_and(True, ext < 5.0)
+    # if iBandCut:
     #    good = dropMatchOutliers(cat, good=good, band=band, **kargOutlier[band])
-    #if noParent:
+    # if noParent:
     #    good = np.logical_and(good, cat.get('parent.'+band) == 0)
-    #if magCut is not None:
+    # if magCut is not None:
     #    good = np.logical_and(good, magI > magCut[0])
     #    good = np.logical_and(good, magI < magCut[1])
-    #return good
+    # return good
     if not isinstance(band, list):
         band = [band]
     return getGoodStats(cat, bands=band)
 
+
 def getId(cat, band='i'):
     if band == 'fromDB':
-        return cat.get('id.2')
+        return cat.get('id2')
     elif band == 'forced':
         return cat.get('id')
     else:
-        return cat.get('multId.'+band)
+        return cat.get('multId_'+band)
+
 
 def getRa(cat, band='i'):
     if band == 'fromDB':
-        return cat.get('coord.ra')
+        return cat.get('coord2_ra')
     else:
-        return cat.get('coord.'+ band + '.ra')
+        return cat.get('coord2_' + band + '_ra')
+
 
 def getDec(cat, band='i'):
     if band == 'fromDB':
-        return cat.get('coord.dec')
+        return cat.get('coord_dec')
     else:
-        return cat.get('coord.'+ band + '.dec')
+        return cat.get('coord2_' + band + '_dec')
+
 
 def getSeeing(cat, band='i'):
-    return cat.get('seeing.'+ band)
+    return cat.get('seeing_' + band)
+
 
 def getMag(cat, band='i'):
     try:
-        f = cat.get('cmodel.flux.'+band)
-        f0 = cat.get('flux.zeromag.'+band)
+        f = cat.get('cmodel_flux_' + band)
+        f0 = cat.get('flux_zeromag_' + band)
         mag = -2.5*np.log10(f/f0)
     except KeyError:
-        mag = cat.get(band+'mag')
+        mag = cat.get(band + 'mag')
     return mag
+
 
 def getMagErr(cat, band='i'):
     try:
-        f = cat.get('cmodel.flux.'+band)
-        fErr = cat.get('cmodel.flux.err.'+band)
-        f0 = cat.get('flux.zeromag.'+band)
-        f0Err = cat.get('flux.zeromag.err.'+band)
+        f = cat.get('cmodel_flux_' + band)
+        fErr = cat.get('cmodel_flux_err_' + band)
+        f0 = cat.get('flux_zeromag_' + band)
+        f0Err = cat.get('flux_zeromag_err_' + band)
         rat = f/f0
         ratErr = np.sqrt(np.square(fErr) + np.square(f*f0Err/f0))/f0
         magErr = 2.5/np.log(10.0)*ratErr/rat
     except KeyError:
         try:
-            magErr = cat.get(band+'mag.cmodel.err')
+            magErr = cat.get(band+'mag_cmodel_err')
         except KeyError:
-            magErr = cat.get(band+'cmodel.mag.err')
+            magErr = cat.get(band+'cmodel_mag_err')
     return magErr
 
+
 def getMagPsf(cat, band='i'):
-    f = cat.get('flux.psf.'+band)
-    f0 = cat.get('flux.zeromag.'+band)
+    f = cat.get('flux_psf_' + band)
+    f0 = cat.get('flux_zeromag_' + band)
     mag = -2.5*np.log10(f/f0)
     return mag
 
+
 def getMagPsfErr(cat, band='i'):
-    f = cat.get('flux.psf.'+band)
-    fErr = cat.get('flux.psf.err.'+band)
-    f0 = cat.get('flux.zeromag.'+band)
-    f0Err = cat.get('flux.zeromag.err.'+band)
+    f = cat.get('flux_psf_' + band)
+    fErr = cat.get('flux_psf_err_' + band)
+    f0 = cat.get('flux_zeromag_' + band)
+    f0Err = cat.get('flux_zeromag_err_' + band)
     rat = f/f0
     ratErr = np.sqrt(np.square(fErr) + np.square(f*f0Err/f0))/f0
     magErr = 2.5/np.log(10.0)*ratErr/rat
     return magErr
 
+
 def getExt(cat, band='i'):
     try:
-        f = cat.get('cmodel.flux.'+band)
-        fP = cat.get('flux.psf.'+band)
+        f = cat.get('cmodel_flux_' + band)
+        fP = cat.get('flux_psf_' + band)
         ext = -2.5*np.log10(fP/f)
     except KeyError:
         ext = cat.get(band+'ext')
     return ext
 
+
 def getExtErr(cat, band='i', corr=0.3):
-    f = cat.get('cmodel.flux.'+band)
-    fErr = cat.get('cmodel.flux.err.'+band)
-    fP = cat.get('flux.psf.'+band)
-    fPErr = cat.get('flux.psf.err.'+band)
+    f = cat.get('cmodel_flux_' + band)
+    fErr = cat.get('cmodel_flux_err_' + band)
+    fP = cat.get('flux_psf_' + band)
+    fPErr = cat.get('flux_psf_err_' + band)
     rat = fP/f
     ratErr = np.sqrt(np.square(fPErr) + np.square(fP*fErr/f))/f
     extErr = 2.5/np.log(10.0)*ratErr/rat
@@ -198,138 +219,163 @@ def getExtErr(cat, band='i', corr=0.3):
     extErr = 1.0/f*fErr
     return extErr
 
+
 def getExtKron(cat, band='i'):
-    f = cat.get('flux.kron.'+band)
-    fP = cat.get('flux.psf.'+band)
+    f = cat.get('flux_kron_' + band)
+    fP = cat.get('flux_psf_' + band)
     ext = -2.5*np.log10(fP/f)
     return ext
+
 
 def getExtHsm(cat, band='i'):
     q, ext = sgsvm.getShape(cat, band, 'hsm')
     return ext
 
+
 def getExtHsmDeconv(cat, band='i'):
     q, ext = sgsvm.getShape(cat, band, 'hsmDeconv')
     return ext
+
 
 def getExtHsmDeconvNorm(cat, band='i'):
     q, ext = sgsvm.getShape(cat, band, 'hsmDeconv', deconvType='traceNorm')
     return ext
 
+
 def getExtHsmDeconvLinear(cat, band='i'):
     q, ext = sgsvm.getShape(cat, band, 'hsmDeconvLinear')
     return ext
 
+
 def getSnr(cat, band='i'):
     try:
-        f = cat.get('cmodel.flux.'+band)
-        fErr = cat.get('cmodel.flux.err.'+band)
+        f = cat.get('cmodel_flux_' + band)
+        fErr = cat.get('cmodel_flux_err_' + band)
         snr = f/fErr
     except KeyError:
         try:
-            snr = 2.5/np.log(10.0)/cat.get(band+'mag.cmodel.err')
+            snr = 2.5/np.log(10.0)/cat.get(band+'mag_cmodel_err')
         except KeyError:
-            snr = 2.5/np.log(10.0)/cat.get(band+'cmodel.mag.err')
-    return snr
-    
-def getSnrPsf(cat, band='i'):
-    try:
-        f = cat.get('flux.psf.'+band)
-        fErr = cat.get('flux.psf.err.'+band)
-        snr = f/fErr
-    except KeyError:
-        snr = 2.5/np.log(10.0)/cat.get(band+'mag.psf.err')
+            snr = 2.5/np.log(10.0)/cat.get(band+'cmodel_mag_err')
     return snr
 
+
+def getSnrPsf(cat, band='i'):
+    try:
+        f = cat.get('flux_psf_' + band)
+        fErr = cat.get('flux_psf_err_' + band)
+        snr = f/fErr
+    except KeyError:
+        snr = 2.5/np.log(10.0)/cat.get(band + 'mag_psf_err')
+    return snr
+
+
 def getSnrAp(cat, band='i'):
-    f = cat.get('flux.sinc.'+band)
-    fErr = cat.get('flux.sinc.err.'+band)
+    f = cat.get('flux_sinc_' + band)
+    fErr = cat.get('flux_sinc_err_' + band)
     snr = f/fErr
     return snr
 
+
 def getSeeing(cat, band='i'):
-    seeing = cat.get('seeing.'+band)
+    seeing = cat.get('seeing_' + band)
     return seeing
 
+
 def getDGaussRadInner(cat, band='i'):
-    return cat.get('dGauss.radInner.' + band)
+    return cat.get('dGauss_radInner_' + band)
+
 
 def getDGaussRadOuter(cat, band='i'):
-    return cat.get('dGauss.radOuter.' + band)
+    return cat.get('dGauss_radOuter_' + band)
+
 
 def getDGaussRadRat(cat, band='i'):
-    return cat.get('dGauss.radOuter.' + band)/cat.get('dGauss.radInner.' + band)
+    return cat.get('dGauss_radOuter_' + band)/cat.get('dGauss_radInner_' + band)
+
 
 def getDGaussAmpRat(cat, band='i'):
-    return cat.get('dGauss.ampRat.' + band)
+    return cat.get('dGauss_ampRat_' + band)
+
 
 def getDGaussQInner(cat, band='i'):
-    return cat.get('dGauss.qInner.' + band)
+    return cat.get('dGauss_qInner_' + band)
+
 
 def getDGaussQOuter(cat, band='i'):
-    return cat.get('dGauss.qOuter.' + band)
+    return cat.get('dGauss_qOuter_' + band)
+
 
 def getDGaussThetaInner(cat, band='i'):
-    return cat.get('dGauss.thetaInner.' + band)
+    return cat.get('dGauss_thetaInner_' + band)
+
 
 def getDGaussThetaOuter(cat, band='i'):
-    return cat.get('dGauss.thetaOuter.' + band)
+    return cat.get('dGauss_thetaOuter_' + band)
+
 
 def getStellar(cat):
     return cat.get('stellar')
 
+
 def getMuClass(cat):
     # We get away with doing this because Alexie's catalog has 0 objects
     # with mu.class=3.
-    return cat.get('mu.class') == 2
+    return cat.get('mu_class') == 2
 
-inputsDict = {'id' : getId,
-              'ra' : getRa,
-              'dec' : getDec,
-              'seeing' : getSeeing,
-              'mag' : getMag,
-              'magPsf' : getMagPsf,
-              'ext' : getExt,
-              'extKron' : getExtKron,
-              'extHsm' : getExtHsm,
-              'extHsmDeconv' : getExtHsmDeconv,
-              'extHsmDeconvNorm' : getExtHsmDeconvNorm,
-              'extHsmDeconvLinear' : getExtHsmDeconvLinear,
-              'snr' : getSnr,
-              'snrPsf' : getSnrPsf,
-              'snrAp' : getSnrAp,
-              'seeing' : getSeeing,
-              'dGaussRadInner' : getDGaussRadInner,
-              'dGaussRadOuter' : getDGaussRadOuter,
-              'dGaussRadRat' : getDGaussRadRat,
-              'dGaussAmpRat' : getDGaussAmpRat,
-              'dGaussQInner' : getDGaussQInner,
-              'dGaussQOuter' : getDGaussQOuter,
-              'dGaussThetaInner' : getDGaussThetaInner,
-              'dGaussThetaOuter' : getDGaussThetaOuter
-              #'fluxRat' : getFluxRat,
-              #'fluxPsfRat' : getFluxRatPsf
-             }
-
-inputsErrDict = {'mag' : getMagErr,
-                 'magPsf' : getMagPsfErr,
-                 'ext' : getExtErr
-                 #'fluxRat' : getFluxRatErr,
-                 #'fluxPsfRat' : getFluxPsfRatErr
-                }
-
-outputsDict = {'stellar' : getStellar,
-               'mu.class' : getMuClass
+inputsDict = {'id': getId,
+              'ra': getRa,
+              'dec': getDec,
+              'seeing': getSeeing,
+              'mag': getMag,
+              'magPsf': getMagPsf,
+              'ext': getExt,
+              'extKron': getExtKron,
+              'extHsm': getExtHsm,
+              'extHsmDeconv': getExtHsmDeconv,
+              'extHsmDeconvNorm': getExtHsmDeconvNorm,
+              'extHsmDeconvLinear': getExtHsmDeconvLinear,
+              'snr': getSnr,
+              'snrPsf': getSnrPsf,
+              'snrAp': getSnrAp,
+              'seeing': getSeeing,
+              'dGaussRadInner': getDGaussRadInner,
+              'dGaussRadOuter': getDGaussRadOuter,
+              'dGaussRadRat': getDGaussRadRat,
+              'dGaussAmpRat': getDGaussAmpRat,
+              'dGaussQInner': getDGaussQInner,
+              'dGaussQOuter': getDGaussQOuter,
+              'dGaussThetaInner': getDGaussThetaInner,
+              'dGaussThetaOuter': getDGaussThetaOuter
+              # 'fluxRat': getFluxRat,
+              # 'fluxPsfRat': getFluxRatPsf
               }
+
+
+inputsErrDict = {'mag': getMagErr,
+                 'magPsf': getMagPsfErr,
+                 'ext': getExtErr
+                 # 'fluxRat': getFluxRatErr,
+                 # 'fluxPsfRat': getFluxPsfRatErr
+                 }
+
+
+outputsDict = {'stellar': getStellar,
+               'mu_class': getMuClass
+               }
+
 
 def getInputsList():
     return inputsDict.keys()
 
+
 def getInputsErrList():
     return inputsErrDict.keys()
 
+
 def getOutputsList():
     return outputsDict.keys()
+
 
 def getInput(cat, inputName='mag', band='i'):
     """
@@ -338,6 +384,7 @@ def getInput(cat, inputName='mag', band='i'):
     """
     return inputsDict[inputName](cat, band=band)
 
+
 def getInputErr(cat, inputName='mag', band='i'):
     """
     Get the input's `inputName` error from cat `cat` in band `band`. To see the list of valid inputs run
@@ -345,12 +392,14 @@ def getInputErr(cat, inputName='mag', band='i'):
     """
     return inputsErrDict[inputName](cat, band=band)
 
-def getOutput(cat, outputName='mu.class'):
+
+def getOutput(cat, outputName='mu_class'):
     """
     Get the output `outputName` from cat `cat` in band `band`. To see the list of valid outputs run
     `getOutputsList()`.
     """
     return outputsDict[outputName](cat)
+
 
 class TrainingSet(object):
 
@@ -360,8 +409,8 @@ class TrainingSet(object):
         self.X = X
         assert len(Y) == self.nTotal
         self.Y = Y
-        #TODO: Implement this to always return views of X ommiting columns
-        #self.include = np.ones((X.shape[1],), dtype=bool)
+        # TODO: Implement this to always return views of X ommiting columns
+        # self.include = np.ones((X.shape[1],), dtype=bool)
         if XErr is not None:
             assert len(XErr) == self.nTotal
             self.XErr = XErr
@@ -430,9 +479,9 @@ class TrainingSet(object):
             assert isinstance(cuts, dict)
             for idx in cuts:
                 if cuts[idx][0] is not None:
-                    good = np.logical_and(good, self.X[:,idx] > cuts[idx][0])
+                    good = np.logical_and(good, self.X[:, idx] > cuts[idx][0])
                 if cuts[idx][1] is not None:
-                    good = np.logical_and(good, self.X[:,idx] < cuts[idx][1])
+                    good = np.logical_and(good, self.X[:, idx] < cuts[idx][1])
         if cols is not None:
             assert isinstance(cols, list)
             Xsub = self.X[:, cols][good]
@@ -494,7 +543,8 @@ class TrainingSet(object):
             else:
                 namesConcat.append(n)
 
-        shapeXConcat = (self.X.shape[0]*len(self.bands), self.X.shape[1] - len(namesMerge)*(len(self.bands) - 1))
+        shapeXConcat = (self.X.shape[0]*len(self.bands),
+                        self.X.shape[1] - len(namesMerge)*(len(self.bands) - 1))
         XConcat = np.zeros(shapeXConcat)
         YConcat = np.zeros((self.X.shape[0]*len(self.bands),), dtype=bool)
         for i, n in enumerate(namesConcat):
@@ -550,14 +600,20 @@ class TrainingSet(object):
     def getTrainSet(self, standardized=True):
         if standardized:
             if hasattr(self, 'XErr'):
-                return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.XErr[self.trainIndexes], self.Y[self.trainIndexes]
+                return ((self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain,
+                        self.XErr[self.trainIndexes],
+                        self.Y[self.trainIndexes])
             else:
-                return (self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.trainIndexes]
+                return ((self.X[self.trainIndexes] - self.XmeanTrain)/self.XstdTrain,
+                        self.Y[self.trainIndexes])
         else:
             if hasattr(self, 'XErr'):
-                return self.X[self.trainIndexes], self.XErr[self.trainIndexes], self.Y[self.trainIndexes]
+                return (self.X[self.trainIndexes],
+                        self.XErr[self.trainIndexes],
+                        self.Y[self.trainIndexes])
             else:
-                return self.X[self.trainIndexes], self.Y[self.trainIndexes]
+                return (self.X[self.trainIndexes],
+                        self.Y[self.trainIndexes])
 
     def getTrainIds(self):
         return self.ids[self.trainIndexes]
@@ -581,7 +637,8 @@ class TrainingSet(object):
             if band == 'best':
                 idxBest = np.argmax(self.snrs[self.trainIndexes], axis=1)
                 idxArr = np.arange(self.nTrain)
-                return self.exts[self.trainIndexes][idxArr, idxBest], 1.0/self.snrs[self.trainIndexes][idxArr, idxBest]
+                return (self.exts[self.trainIndexes][idxArr, idxBest],
+                        1.0/self.snrs[self.trainIndexes][idxArr, idxBest])
             else:
                 return self.exts[:, self.bands.index(band)][self.trainIndexes]
 
@@ -599,14 +656,20 @@ class TrainingSet(object):
     def getTestSet(self, standardized=True):
         if standardized:
             if hasattr(self, 'XErr'):
-                return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.XErr[self.testIndexes], self.Y[self.testIndexes]
+                return ((self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain,
+                        self.XErr[self.testIndexes],
+                        self.Y[self.testIndexes])
             else:
-                return (self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain, self.Y[self.testIndexes]
+                return ((self.X[self.testIndexes] - self.XmeanTrain)/self.XstdTrain,
+                        self.Y[self.testIndexes])
         else:
             if hasattr(self, 'XErr'):
-                return self.X[self.testIndexes], self.XErr[self.testIndexes], self.Y[self.testIndexes]
+                return (self.X[self.testIndexes],
+                        self.XErr[self.testIndexes],
+                        self.Y[self.testIndexes])
             else:
-                return self.X[self.testIndexes], self.Y[self.testIndexes]
+                return (self.X[self.testIndexes],
+                        self.Y[self.testIndexes])
 
     def getTestIds(self):
         return self.ids[self.testIndexes]
@@ -630,7 +693,8 @@ class TrainingSet(object):
             if band == 'best':
                 idxBest = np.argmax(self.snrs[self.testIndexes], axis=1)
                 idxArr = np.arange(self.nTest)
-                return self.exts[self.testIndexes][idxArr, idxBest], 1.0/self.snrs[self.testIndexes][idxArr, idxBest]
+                return (self.exts[self.testIndexes][idxArr, idxBest],
+                        1.0/self.snrs[self.testIndexes][idxArr, idxBest])
             else:
                 return self.exts[:, self.bands.index(band)][self.testIndexes]
 
@@ -749,7 +813,7 @@ class TrainingSet(object):
                         magsStd = np.std(self.getTrainMags(band='i'))
         else:
             raise ValueError("Mode {0} doesn't exist!".format(mode))
-        if standardized: 
+        if standardized:
             if mode == 'all':
                 mags = self.getAllMags(band='i')
             elif mode == 'train':
@@ -770,8 +834,8 @@ class TrainingSet(object):
             self.extsStd = extsStd
             self.magsMean = magsMean
             self.magsStd = magsStd
-            XSub = np.concatenate((XSub, mags[:,None]), axis=1)
-        X = np.concatenate((XSub, exts[:,None]), axis=1)
+            XSub = np.concatenate((XSub, mags[:, None]), axis=1)
+        X = np.concatenate((XSub, exts[:, None]), axis=1)
         covShapeSub = XErrSub.shape
         dimSub = covShapeSub[1]
         assert dimSub == covShapeSub[2]
@@ -781,7 +845,7 @@ class TrainingSet(object):
         XErr[:, xxSub, yySub] = XErrSub
         XErr[:, dimSub, dimSub] = extsErr
         return X, XErr, Y
-    
+
     def applyPreTestTransform(self, X):
         return (X - self.XmeanTrain)/self.XstdTrain
 
@@ -789,16 +853,17 @@ class TrainingSet(object):
         return (X - self.XmeanAll)/self.XstdAll
 
     def plotLabeledHist(self, idx, physical=True, nBins=100):
-        hist, bins = np.histogram(self.X[:,idx], bins=nBins)
-        dataStars = self.X[:,idx][self.Y]
-        dataGals = self.X[:,idx][np.logical_not(self.Y)]
+        hist, bins = np.histogram(self.X[:, idx], bins=nBins)
+        dataStars = self.X[:, idx][self.Y]
+        dataGals = self.X[:, idx][np.logical_not(self.Y)]
         fig = plt.figure()
         plt.hist(dataStars, bins=bins, histtype='step', color='blue', label='Stars')
         plt.hist(dataGals, bins=bins, histtype='step', color='red', label='Galaxies')
         return fig
 
-def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='mag', extsType='ext', concatBands=True,
-              onlyFinite=True, polyOrder=1, withErr=False, snrType='snr', fromDB=False):
+
+def _extractXY(cat, inputs=['ext'], output='mu_class', bands=['i'], magsType='mag', extsType='ext',
+               concatBands=True, onlyFinite=True, polyOrder=1, withErr=False, snrType='snr', fromDB=False):
     """
     Load `inputs` from `cat` into `X` and   `output` to `Y`. If onlyFinite is True, then
     throw away all rows with one or more non-finite entries.
@@ -809,9 +874,10 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
        not isinstance(cat, afwTable.tableLib.SimpleCatalog):
         try:
             cat = afwTable.SourceCatalog.readFits(cat)
-        except LsstCppException:
+        except lsst.pex.exceptions.Exception:
             cat = afwTable.SimpleCatalog.readFits(cat)
-    nRecords = len(cat); nBands = len(bands); nInputs = len(inputs)
+    nRecords = len(cat)
+    nInputs = len(inputs)
     if concatBands:
         ids = np.zeros((nRecords*len(bands),), dtype=long)
         ras = np.zeros((nRecords*len(bands),))
@@ -881,17 +947,24 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
         good = True
     if concatBands:
         for i, band in enumerate(bands):
-            good[i*nRecords:(i+1)*nRecords] = np.logical_and(good[i*nRecords:(i+1)*nRecords], getGood(cat, band=bands))
+            good[i*nRecords: (i + 1)*nRecords] = np.logical_and(good[i*nRecords: (i + 1)*nRecords],
+                                                                getGood(cat, band=bands))
     else:
         good = np.logical_and(good, getGood(cat, band=bands))
     if onlyFinite:
         for i in range(X.shape[1]):
-            good = np.logical_and(good, np.isfinite(X[:,i]))
+            good = np.logical_and(good, np.isfinite(X[:, i]))
             if withErr:
-                good = np.logical_and(good, np.isfinite(XErr[:,i]))
-            good = np.logical_and(good, np.isfinite(snrs[:,i]))
-    ids = ids[good]; ras = ras[good]; decs = decs[good]; X = X[good]; Y = Y[good]; mags = mags[good]; exts = exts[good];
-    snrs = snrs[good]; 
+                good = np.logical_and(good, np.isfinite(XErr[:, i]))
+            good = np.logical_and(good, np.isfinite(snrs[:, i]))
+    ids = ids[good]
+    ras = ras[good]
+    decs = decs[good]
+    X = X[good]
+    Y = Y[good]
+    mags = mags[good]
+    exts = exts[good]
+    snrs = snrs[good]
     if not fromDB:
         seeings = seeings[good]
     if withErr:
@@ -909,19 +982,21 @@ def _extractXY(cat, inputs=['ext'], output='mu.class', bands=['i'], magsType='ma
         else:
             return X, Y, ids, ras, decs, mags, exts, snrs
 
+
 def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
-    if not 'withErr' in kargs:
+    if 'withErr' not in kargs:
         kargs['withErr'] = False
 
     if mode in ['colors', 'rats'] and not kargs['withErr']:
-        raise ValueError('You are forced to pull out errors for mode {0}, set keyword `withErr` to True'.format(mode))
+        raise ValueError('You are forced to pull out errors for mode {0},\
+        set keyword `withErr` to True'.format(mode))
 
     if 'fromDB' in kargs:
         fromDB = kargs['fromDB']
     else:
         fromDB = False
 
-    if kargs['withErr'] == True:
+    if kargs['withErr'] is True:
         if fromDB:
             X, XErr, Y, ids, ras, decs, mags, exts, snrs = _extractXY(cat, **kargs)
         else:
@@ -958,10 +1033,12 @@ def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
                 names.append(name + '_' + suffix)
 
     if mode == 'raw':
-        if kargs['withErr'] == True:
-            trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, bands=bands, names=names, mags=mags, exts=exts, snrs=snrs, seeings=seeings, polyOrder=polyOrder)
+        if kargs['withErr'] is True:
+            trainSet = TrainingSet(X, Y, XErr=XErr, ids=ids, ras=ras, decs=decs, bands=bands, names=names,
+                                   mags=mags, exts=exts, snrs=snrs, seeings=seeings, polyOrder=polyOrder)
         else:
-            trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, bands=bands, names=names, mags=mags, exts=exts, snrs=snrs, seeings=seeings, polyOrder=polyOrder)
+            trainSet = TrainingSet(X, Y, ids=ids, ras=ras, decs=decs, bands=bands, names=names,
+                                   mags=mags, exts=exts, snrs=snrs, seeings=seeings, polyOrder=polyOrder)
     elif mode in ['colors', 'rats', 'colshape']:
         assert not concatBands
         assert len(bands) > 1
@@ -978,15 +1055,15 @@ def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
             XCol = XColShape[:, :-1]
             XColErr = XColShapeErr[:, :-1]
             XColCov = XColShapeCov[:, :-1, :-1]
-        diag = np.arange(XCol.shape[-1]) # To fill variance terms
-        offDiag = diag[:-1] + 1 # To fill covariance terms
+        diag = np.arange(XCol.shape[-1])  # To fill variance terms
+        offDiag = diag[: -1] + 1  # To fill covariance terms
         if mode in ['colors', 'colshape']:
             for i in range(nColors):
                 cNames.append(bands[i] + '-' + bands[i+1])
                 idxB = names.index(colType + '_'+bands[i])
                 idxR = names.index(colType + '_'+bands[i+1])
                 XCol[:, i] = X[:, idxB] - X[:, idxR]
-                XColErr[:, i] = XErr[:,idxB]**2 + XErr[:,idxR]**2
+                XColErr[:, i] = XErr[:, idxB]**2 + XErr[:, idxR]**2
 
             covStack = []
             for i in range(1, len(bands)-1):
@@ -997,8 +1074,8 @@ def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
         covOffDiag = np.vstack(covStack).T
 
         XColCov[:, diag, diag] = XColErr
-        XColCov[:,diag[:-1], offDiag] = covOffDiag
-        XColCov[:,offDiag, diag[:-1]] = covOffDiag
+        XColCov[:, diag[:-1], offDiag] = covOffDiag
+        XColCov[:, offDiag, diag[:-1]] = covOffDiag
 
         # TODO: Add code to be able to append more inputs given appropiate correlation coefficients
         if mode == 'colshape':
@@ -1009,23 +1086,27 @@ def extractTrainSet(cat, mode='raw', extBand='i', colType='mag', **kargs):
         names = cNames
         if mode == 'colors':
             if fromDB:
-                trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                       snrs=snrs, bands=bands, names=names, polyOrder=polyOrder)
+                trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags,
+                                       exts=exts, snrs=snrs, bands=bands, names=names, polyOrder=polyOrder)
             else:
-                trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                       snrs=snrs, seeings=seeings, bands=bands, names=names, polyOrder=polyOrder)
+                trainSet = TrainingSet(XCol, Y, XErr=XColCov, ids=ids, ras=ras, decs=decs, mags=mags,
+                                       exts=exts, snrs=snrs, seeings=seeings, bands=bands, names=names,
+                                       polyOrder=polyOrder)
         elif mode == 'colshape':
             names.append('ext_'+extBand)
             if fromDB:
-                trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                       snrs=snrs, bands=bands, names=names, polyOrder=polyOrder)
+                trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs,
+                                       mags=mags, exts=exts, snrs=snrs, bands=bands, names=names,
+                                       polyOrder=polyOrder)
             else:
-                trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs, mags=mags, exts=exts,\
-                                       snrs=snrs, seeings=seeings, bands=bands, names=names, polyOrder=polyOrder)
+                trainSet = TrainingSet(XColShape, Y, XErr=XColShapeCov, ids=ids, ras=ras, decs=decs,
+                                       mags=mags, exts=exts, snrs=snrs, seeings=seeings, bands=bands,
+                                       names=names, polyOrder=polyOrder)
     else:
         raise ValueError("Mode {0} not implemented".format(mode))
 
     return trainSet
+
 
 class Training(object):
 
@@ -1085,11 +1166,11 @@ class Training(object):
         if self.preFit:
             self.coeffPhys = estimator.coef_[0]/self.trainingSet.XstdTrain
             self.interceptPhys = estimator.intercept_ -\
-                        np.sum(estimator.coef_[0]*self.trainingSet.XmeanTrain/self.trainingSet.XstdTrain)
+                np.sum(estimator.coef_[0]*self.trainingSet.XmeanTrain/self.trainingSet.XstdTrain)
         else:
             self.coeffPhys = estimator.coef_[0]/self.trainingSet.XstdAll
             self.interceptPhys = estimator.intercept_ -\
-                        np.sum(estimator.coef_[0]*self.trainingSet.XmeanAll/self.trainingSet.XstdAll)
+                np.sum(estimator.coef_[0]*self.trainingSet.XmeanAll/self.trainingSet.XstdAll)
 
     def printPhysicalFit(self, normalized=False):
         if hasattr(self.estimator, 'coef_'):
@@ -1132,9 +1213,11 @@ class Training(object):
                     for j in range(i, nTerms):
                         for k in range(j, nTerms):
                             if self.coeffPhys[count] < 0.0:
-                                polyStr += "{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                                polyStr += "{0}*{1}*{2}*{3} ".format(self.coeffPhys[count],
+                                                                     names[i], names[j], names[k])
                             else:
-                                polyStr += "+{0}*{1}*{2}*{3} ".format(self.coeffPhys[count], names[i], names[j], names[k])
+                                polyStr += "+{0}*{1}*{2}*{3} ".format(self.coeffPhys[count],
+                                                                      names[i], names[j], names[k])
                             count += 1
 
             print polyStr
@@ -1153,7 +1236,7 @@ class Training(object):
             mags = self.trainingSet.getAllMags(band='i')
         else:
             raise ValueError("Scores of type {0} are not implemented".format(sType))
-        
+
         if magRange is None:
             magsBins = np.linspace(mags.min(), mags.max(), num=nBins+1)
         else:
@@ -1165,7 +1248,8 @@ class Training(object):
         purityGals = np.zeros(magsCenters.shape)
         if colExt:
             assert not svm
-            X, XErr, Y = self.trainingSet.genColExtTrainSet(mode=sType, combExt=combExt, weightedComb=weightedComb)
+            X, XErr, Y = self.trainingSet.genColExtTrainSet(mode=sType, combExt=combExt,
+                                                            weightedComb=weightedComb)
             pred = self.clf.predict(X, XErr, mags, **kargsPred)
             truth = Y
         elif svm:
@@ -1184,7 +1268,8 @@ class Training(object):
                 truth = self.trainingSet.getAllSet()[1]
         for i in range(nBins):
             magCut = np.logical_and(mags > magsBins[i], mags < magsBins[i+1])
-            predCut = pred[magCut]; truthCut = truth[magCut]
+            predCut = pred[magCut]
+            truthCut = truth[magCut]
             goodStars = np.logical_and(predCut, truthCut)
             goodGals = np.logical_and(np.logical_not(predCut), np.logical_not(truthCut))
             if np.sum(truthCut) > 0:
@@ -1219,21 +1304,25 @@ class Training(object):
             for tick in ax.yaxis.get_major_ticks():
                 tick.label.set_fontsize(fontSize)
 
-        axGal.step(magsCenters, complGals, color='red', linestyle=linestyle, label=legendLabel + ' Completeness')
-        axGal.step(magsCenters, purityGals, color='blue', linestyle=linestyle, label=legendLabel + ' Purity')
-        axStar.step(magsCenters, complStars, color='red', linestyle=linestyle, label=legendLabel + ' Completeness')
-        axStar.step(magsCenters, purityStars, color='blue', linestyle=linestyle, label=legendLabel + ' Purity')
+        axGal.step(magsCenters, complGals, color='red', linestyle=linestyle,
+                   label=legendLabel + ' Completeness')
+        axGal.step(magsCenters, purityGals, color='blue', linestyle=linestyle,
+                   label=legendLabel + ' Purity')
+        axStar.step(magsCenters, complStars, color='red', linestyle=linestyle,
+                    label=legendLabel + ' Completeness')
+        axStar.step(magsCenters, purityStars, color='blue', linestyle=linestyle,
+                    label=legendLabel + ' Purity')
 
         axGal.legend(loc='lower left', fontsize=fontSize-2)
         axStar.legend(loc='lower left', fontsize=fontSize-2)
-        
+
         if xlim is not None:
             for ax in fig.get_axes():
                 ax.set_xlim(xlim)
 
         return fig
 
-    def setPhysicalCut(self, cut, tType = 'train'):
+    def setPhysicalCut(self, cut, tType='train'):
         assert self.trainingSet.X.shape[1] == 1
 
         if isinstance(self.clf, GridSearchCV):
@@ -1261,11 +1350,15 @@ class Training(object):
         vecRoot = np.zeros((2,))
         vecRoot[fixedIndex] = fixedVal
         vecCoeff = np.zeros((nTerms,))
-        vecCoeff[:-1] = self.coeffPhys; vecCoeff[-1] = self.interceptPhys[0]
+        vecCoeff[:-1] = self.coeffPhys
+        vecCoeff[-1] = self.interceptPhys[0]
         vec = np.zeros((nTerms,))
+
         def F(x):
             vecRoot[varIndex] = x
-            vec[0] = vecRoot[0]; vec[1] = vecRoot[1]; vec[-1] = 1.0
+            vec[0] = vecRoot[0]
+            vec[1] = vecRoot[1]
+            vec[-1] = 1.0
             count = 0
             if self.trainingSet.polyOrder >= 2:
                 for i in range(2):
@@ -1304,6 +1397,7 @@ class Training(object):
         # TODO: Make it possible to use this function for polyOrder > 1
         Xphys = np.zeros((1, self.trainingSet.X.shape[1]))
         Xphys[0, fixedIndex] = fixedVal
+
         def F(x):
             Xphys[0, varIndex] = x
             if self.preFit:
@@ -1317,8 +1411,8 @@ class Training(object):
         assert chooseSol in [0, 1]
 
         if zeroRange is None:
-            zeroRange = (self.trainingSet.X[:,varIndex].min(),self.trainingSet.X[:,varIndex].max())
-        
+            zeroRange = (self.trainingSet.X[:, varIndex].min(), self.trainingSet.X[:, varIndex].max())
+
         if hasattr(self.clf, 'best_estimator_'):
             estimator = self.clf.best_estimator_
         else:
@@ -1340,13 +1434,24 @@ class Training(object):
                     B = self.coeffPhys[1] + self.coeffPhys[3]*fixedVal
                     C = self.coeffPhys[0]*fixedVal + self.coeffPhys[2]*fixedVal**2 + self.interceptPhys[0]
                 discr = np.sqrt(B**2 - 4*A*C)
-                sol1 = (-B + discr)/(2*A); sol2 = (-B - discr)/(2*A)
-                if sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
+                sol1 = (-B + discr)/(2*A)
+                sol2 = (-B - discr)/(2*A)
+                if (sol1 > zeroRange[0] and
+                    sol1 < zeroRange[1] and
+                    sol2 < zeroRange[0] or
+                        sol2 > zeroRange[1]):
                     return sol1
-                elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
+                elif (sol1 < zeroRange[0] or
+                      sol1 > zeroRange[1] and
+                      sol2 > zeroRange[0] and
+                      sol2 < zeroRange[1]):
                     return sol2
-                elif sol1 < zeroRange[0] or sol1 > zeroRange[1] and sol2 < zeroRange[0] or sol2 > zeroRange[1]:
-                    print "WARNING: No solution was found in the specified interval, I'll return the one that's closer"
+                elif (sol1 < zeroRange[0] or
+                      sol1 > zeroRange[1] and
+                      sol2 < zeroRange[0] or
+                      sol2 > zeroRange[1]):
+                    print "WARNING: No solution was found in the specified interval,\
+                    I'll return the one that's closer"
                     d1 = min(np.absolute(sol1 - zeroRange[0]), np.absolute(sol1 - zeroRange[1]))
                     d2 = min(np.absolute(sol2 - zeroRange[0]), np.absolute(sol2 - zeroRange[1]))
 
@@ -1354,8 +1459,12 @@ class Training(object):
                         return sol1
                     elif d2 < d1:
                         return sol2
-                elif sol1 > zeroRange[0] and sol1 < zeroRange[1] and sol2 > zeroRange[0] and sol2 < zeroRange[1]:
-                    print "WARNING: Two solutions were found in the specified interval, I'll return solution {0}".format(chooseSol)
+                elif (sol1 > zeroRange[0] and
+                      sol1 < zeroRange[1] and
+                      sol2 > zeroRange[0] and
+                      sol2 < zeroRange[1]):
+                    print "WARNING: Two solutions were found in the specified interval,\
+                    I'll return solution {0}".format(chooseSol)
                     if chooseSol == 1:
                         return sol1
                     elif chooseSol == 2:
@@ -1421,12 +1530,13 @@ class Training(object):
                         plt.show()
                     raise e
 
-    def getDecBoundary(self, rangeIndex, varIndex, fixedIndexes=None, fixedVals=None, xRange=None, 
+    def getDecBoundary(self, rangeIndex, varIndex, fixedIndexes=None, fixedVals=None, xRange=None,
                        nPoints=100, yRange=None, asLogX=False, fallbackRange=None):
 
         if self.trainingSet.X.shape[1] > sgsvm.nterms(self.trainingSet.polyOrder, 2) - 1:
             if fixedIndexes is None or fixedVals is None:
-                raise ValueError("If there are more than two inputs I need to know the indexes and values of fixed variables.")
+                raise ValueError("If there are more than two inputs I need to know the indexes and values\
+                of fixed variables.")
             fixedIndexes.append(rangeIndex)
             fixedVals.append(0.0)
         else:
@@ -1434,7 +1544,7 @@ class Training(object):
             assert fixedVals is None
 
         if xRange is None:
-            xRange = (self.trainingSet.X[:,rangeIndex].min(),self.trainingSet.X[:,rangeIndex].max())
+            xRange = (self.trainingSet.X[:, rangeIndex].min(), self.trainingSet.X[:, rangeIndex].max())
 
         if asLogX:
             xGrid = np.linspace(np.log10(xRange[0]), np.log10(xRange[1]), num=nPoints)
@@ -1446,9 +1556,11 @@ class Training(object):
         for i, fixedVal in enumerate(xGrid):
             if fixedIndexes is not None and fixedVals is not None:
                 fixedVals[-1] = fixedVal
-                yGrid[i] = self.findZero(fixedIndexes, varIndex, fixedVals, zeroRange=yRange, fallbackRange=fallbackRange)
+                yGrid[i] = self.findZero(fixedIndexes, varIndex, fixedVals, zeroRange=yRange,
+                                         fallbackRange=fallbackRange)
             else:
-                yGrid[i] = self.findZero(rangeIndex, varIndex, fixedVal, zeroRange=yRange, fallbackRange=fallbackRange)
+                yGrid[i] = self.findZero(rangeIndex, varIndex, fixedVal, zeroRange=yRange,
+                                         fallbackRange=fallbackRange)
 
         return xGrid, yGrid
 
@@ -1456,7 +1568,8 @@ class Training(object):
                      xlim=None, ylim=None, xlabel=None, ylabel=None, yRange=None, frac=0.03,
                      withTrueLabels=True, fontSize=18, asLogX=False):
 
-        xGrid, yGrid = self.getDecBoundary(rangeIndex, varIndex, xRange=xRange, nPoints=nPoints, yRange=yRange, asLogX=asLogX)
+        xGrid, yGrid = self.getDecBoundary(rangeIndex, varIndex, xRange=xRange,
+                                           nPoints=nPoints, yRange=yRange, asLogX=asLogX)
 
         if fig is None:
             fig = plt.figure()
@@ -1475,14 +1588,18 @@ class Training(object):
                 idxSample = np.random.choice(len(self.trainingSet.X), nSample, replace=False)
                 for i in idxSample:
                     if self.trainingSet.Y[i]:
-                        plotting(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='blue')
+                        plotting(self.trainingSet.X[i, rangeIndex], self.trainingSet.X[i, varIndex],
+                                 marker='.', markersize=1, color='blue')
                     else:
-                        plotting(self.trainingSet.X[i,rangeIndex], self.trainingSet.X[i, varIndex], marker='.', markersize=1, color='red')
+                        plotting(self.trainingSet.X[i, rangeIndex], self.trainingSet.X[i, varIndex],
+                                 marker='.', markersize=1, color='red')
             else:
                 Xtest, Ytest = self.trainingSet.getTestSet()
                 testIndexes = self.trainingSet.testIndexes
-                Z = self.clf.predict_proba(Xtest)[:,1]
-                sc = ax.scatter(self.trainingSet.X[testIndexes, rangeIndex], self.trainingSet.X[testIndexes, varIndex], c=Z, marker='.', s=2, edgecolors="none")
+                Z = self.clf.predict_proba(Xtest)[:, 1]
+                sc = ax.scatter(self.trainingSet.X[testIndexes, rangeIndex],
+                                self.trainingSet.X[testIndexes, varIndex],
+                                c=Z, marker='.', s=2, edgecolors="none")
                 cb = fig.colorbar(sc)
                 cb.set_label('P(Star)', fontsize=fontSize)
                 cb.ax.tick_params(labelsize=fontSize)
@@ -1505,7 +1622,8 @@ class Training(object):
 
         return fig
 
-    def plotPMap(self, xRange, yRange, xN, yN, asLogX=False, fontSize=18, xlabel=None, ylabel=None, cbLabel=None):
+    def plotPMap(self, xRange, yRange, xN, yN, asLogX=False, fontSize=18, xlabel=None, ylabel=None,
+                 cbLabel=None):
         if asLogX:
             xx, yy = np.meshgrid(np.linspace(np.log10(xRange[0]), np.log10(xRange[1]), num=xN),
                                  np.linspace(yRange[0], yRange[1], num=yN))
@@ -1518,7 +1636,7 @@ class Training(object):
             X = sgsvm.phiPol(X, self.trainingSet.polyOrder)
         X = self.trainingSet.applyPreTestTransform(X)
         try:
-            Z = self.clf.predict_proba(X)[:,1]
+            Z = self.clf.predict_proba(X)[:, 1]
         except AttributeError:
             Z = self.clf.predict(X).astype('float')
         zz = Z.reshape(xx.shape)
@@ -1542,6 +1660,7 @@ class Training(object):
         ax.set_ylim(yRange)
         return fig
 
+
 class BoxClf(object):
 
     def __init__(self):
@@ -1555,7 +1674,7 @@ class BoxClf(object):
         self._yBdy = value
 
     def predict(self, X):
-       return np.logical_and(X[:,0] < self._xBdy, X[:, 1] < self._yBdy)
+        return np.logical_and(X[:, 0] < self._xBdy, X[:, 1] < self._yBdy)
 
     def plotBox(self, trainSet=None, frac=0.01, xlim=(18.0, 26.0), ylim=(-0.4, 1.0)):
         fig = plt.figure(dpi=120)
@@ -1574,40 +1693,45 @@ class BoxClf(object):
         ax.set_ylim(ylim)
         return fig
 
+
 class IsochroneReader(object):
 
     def __init__(self, iType='LSST', stringZ='p00', stringA='p0', suffix=None, stringY=None):
         dirHome = os.path.expanduser('~')
         self.isochrones = {}
         if stringY is None:
-            fName = os.path.join(dirHome, 'Data/isochrones/{0}/feh{1}afe{2}.{0}'.format(iType, stringZ, stringA))
+            fName = os.path.join(dirHome,
+                                 'Data/isochrones/{0}/feh{1}afe{2}.{0}'.format(iType, stringZ, stringA))
         else:
-            fName = os.path.join(dirHome, 'Data/isochrones/{0}/feh{1}afe{2}y{3}.{0}'.format(iType, stringZ, stringA, stringY))
+            fName = os.path.join(dirHome,
+                                 'Data/isochrones/{0}/feh{1}afe{2}y{3}.{0}'.format(iType, stringZ,
+                                                                                   stringA, stringY))
         if suffix is not None:
             fName += '_2'
         self.readFile(fName)
 
     def readFile(self, fName):
-       with open(fName) as f: 
-           for line in f:
-               if line[:4] == '#AGE':
-                   match = re.match(r"^#AGE=([0-9][0-9].[0-9]*| [0-9].[0-9]*) EEPS=([0-9]*)", line)
-                   age = float(match.group(1))
-                   eeps = int(match.group(2))
-               elif line[:4] == '#EEP':
-                   cols = line.split()
-                   cols[0] = cols[0][1:]
-                   self.isochrones[age] = {}
-                   for col in cols:
-                       self.isochrones[age][col] = np.zeros((eeps,))
-                   count = 0
-               elif line[0] == ' ':
-                   values = line.split() 
-                   for i, col in enumerate(cols):
-                       self.isochrones[age][col][count] = values[i]
-                   count += 1
-               else:
-                   continue
+        with open(fName) as f:
+            for line in f:
+                if line[:4] == '#AGE':
+                    match = re.match(r"^#AGE=([0-9][0-9].[0-9]*| [0-9].[0-9]*) EEPS=([0-9]*)", line)
+                    age = float(match.group(1))
+                    eeps = int(match.group(2))
+                elif line[:4] == '#EEP':
+                    cols = line.split()
+                    cols[0] = cols[0][1:]
+                    self.isochrones[age] = {}
+                    for col in cols:
+                        self.isochrones[age][col] = np.zeros((eeps,))
+                    count = 0
+                elif line[0] == ' ':
+                    values = line.split()
+                    for i, col in enumerate(cols):
+                        self.isochrones[age][col][count] = values[i]
+                    count += 1
+                else:
+                    continue
+
 
 class ClfHsc(object):
 
