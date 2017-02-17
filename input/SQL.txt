@@ -1,0 +1,63 @@
+-- Jose Garmilla's SQL Query to get HSC catalogs
+-- SQL:
+--
+-- COSMOS WIDE Median With Extendedness Classification
+--
+SELECT phot.object_id, phot.ra, phot.dec,
+phot.gcmodel_mag-phot.a_g as gmag, phot.gcmodel_mag_err,
+          phot.rcmodel_mag-phot.a_r as rmag, phot.rcmodel_mag_err,
+          phot.icmodel_mag-phot.a_i as imag, phot.icmodel_mag_err,
+          phot.zcmodel_mag-phot.a_z as zmag, phot.zcmodel_mag_err,
+          phot.ycmodel_mag-phot.a_y as ymag, phot.ycmodel_mag_err,
+phot.gmag_psf-phot.gcmodel_mag as gext, phot.gmag_psf_err,
+phot.rmag_psf-phot.rcmodel_mag as rext, phot.rmag_psf_err,
+phot.imag_psf-phot.icmodel_mag as iext, phot.imag_psf_err,
+phot.zmag_psf-phot.zcmodel_mag as zext, phot.zmag_psf_err,
+phot.ymag_psf-phot.ycmodel_mag as yext, phot.ymag_psf_err,
+          phot.gclassification_extendedness,
+phot.rclassification_extendedness,
+          phot.iclassification_extendedness,
+          phot.zclassification_extendedness,
+          phot.yclassification_extendedness
+
+FROM s15b_udeep_wide_depth_median.forced AS phot
+
+ WHERE  phot.gcentroid_sdss_flags is not True
+ AND  phot.rcentroid_sdss_flags is not True
+ AND  phot.icentroid_sdss_flags is not True
+ AND  phot.zcentroid_sdss_flags is not True
+ AND  phot.ycentroid_sdss_flags is not True
+
+ AND  phot.gflags_pixel_edge is not True
+ AND  phot.rflags_pixel_edge is not True
+ AND  phot.iflags_pixel_edge is not True
+ AND  phot.zflags_pixel_edge is not True
+ AND  phot.yflags_pixel_edge is not True
+
+ AND  phot.gflags_pixel_saturated_center is not True
+ AND  phot.rflags_pixel_saturated_center is not True
+ AND  phot.iflags_pixel_saturated_center is not True
+ AND  phot.zflags_pixel_saturated_center is not True
+ AND  phot.yflags_pixel_saturated_center is not True
+
+ AND  phot.gflags_pixel_cr_any is not True
+ AND  phot.rflags_pixel_cr_any is not True
+ AND  phot.iflags_pixel_cr_any is not True
+ AND  phot.zflags_pixel_cr_any is not True
+ AND  phot.yflags_pixel_cr_any is not True
+
+ AND  phot.gflags_pixel_bad is not True
+ AND  phot.rflags_pixel_bad is not True
+ AND  phot.iflags_pixel_bad is not True
+ AND  phot.zflags_pixel_bad is not True
+ AND  phot.yflags_pixel_bad is not True
+
+ AND  phot.gcmodel_flux_flags is not True
+ AND  phot.rcmodel_flux_flags is not True
+ AND  phot.icmodel_flux_flags is not True
+ AND  phot.zcmodel_flux_flags is not True
+ AND  phot.ycmodel_flux_flags is not True
+
+ AND  phot.deblend_nchild =0
+ AND  phot.detect_is_primary is True
+;
