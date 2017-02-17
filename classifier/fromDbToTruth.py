@@ -9,8 +9,9 @@ import fsButler.utils as fsUtils
 
 depth = 'udeepwide'
 
-# We assume the input data is in the same directory as this file
-inputDir = os.path.dirname(os.path.abspath(__file__))
+# Assume the input data lives in the ``input`` directory located relative to
+# this file. Obviously, this is an ugly hack.
+inputDir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "input")
 
 selectSG = os.path.join(inputDir, 'cosmos_sg_all.fits')  # Alexii's catalog
 inputFile = os.path.join(inputDir, '%s.csv'%(depth))  # Reduction of the COSMOS field

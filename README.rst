@@ -16,13 +16,13 @@ SGS requires the `LSST Stack`_, the `LSST analysis`_ repository, and Jo Bovy's `
     - ``dGauss.py``: Python library that contains the definition of the SGS classifier - ``sgsupervised.dGauss.XDClfs``.
     - ``utils.py``: Python library of miscellaneous utility functions.
     - ``plotsScripts.py``: Python script that contains the functionality to train the SGS classifier as well as functions that generate various plots of interest.
+    - ``fromDbToTruth.py``: Python script that matches HSC catalogs i.e. ``<depth>.csv``, to Alexie Leauthaud's HST catalog containing star v/s galaxy classifications of objects (i.e. ``cosmos_sg_all.fits``) from COSMOS. After applying some of the cuts described in [Garmilla2016]_, the script writes the resulting classified HSC catalog out with the name ``<depth>HscClass.fits``
 
    Input data is in the ``input`` directory. It includes:
 
     - ``SQL.txt``: Sample SQL query to run on the HSC database in order to generate a ``.csv`` file of the objects to be used to create the training set. The ``.csv`` files should be named using the form ``<depth>.csv`` where <depth> is one of wide, deep, or udeep.
     - ``cosmos_sg_all_GOLD.fits``: Original copy of Alexie Leauthaud's HST catalog from [Leauthaud2007]_ containing star v/s galaxy classifications for objects in the COSMOS field. Note that this catalog uses degrees rather than radians when giving positions (RA & Dec).
     - ``cosmos_sg_all.fits``: Copy of cosmos_sg_all_GOLD.fits where the position measurements have been converted from degrees to radians so that the catalog can be read in using the `LSST Stack`_.
-    - ``fromDbToTruth.py``: Python script that matches HSC catalogs i.e. ``<depth>.csv``, to Alexie Leauthaud's HST catalog containing star v/s galaxy classifications of objects (i.e. ``cosmos_sg_all.fits``) from COSMOS. After applying some of the cuts described in [Garmilla2016]_, the script writes the resulting classified HSC catalog out with the name ``<depth>HscClass.fits``
 
 #. `sgs-fsbutler`_: Utility package for interfacing with the results of SQL queries on the HSC database. Users do not interact directly with the contents of this package. As such, the package can effectively be regarded as a black-box. This package managed by `EUPS`_; declare it and set it up as follows::
 
