@@ -23,10 +23,13 @@ import utils
 
 depth = 'udeepwide'
 
-sgsDir = os.path.join(os.environ['EUPS_PATH'], '..', '..', 'sgs')
-matchedCatFile = os.path.join(sgsDir, '%sHscClass.fits'%(depth))
-trainSetFile = os.path.join(sgsDir, '%sTrainSet.pkl'%(depth))
-classifierFile = os.path.join(sgsDir, '%sClfsColsExt.pkl'%(depth))
+# Assume the input data lives in the ``input`` directory located relative to
+# this file. Obviously, this is an ugly hack.
+inputDir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "input")
+
+matchedCatFile = os.path.join(inputDir, '%sHscClass.fits'%(depth))
+trainSetFile = os.path.join(inputDir, '%sTrainSet.pkl'%(depth))
+classifierFile = os.path.join(inputDir, '%sClfsColsExt.pkl'%(depth))
 
 
 def cutsPlots():
@@ -1519,7 +1522,7 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style=
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    figPosts.savefig(os.path.join(sgsDir, 'xdColExtPosts.png'), dpi=120, bbox_inches='tight')
+    figPosts.savefig(os.path.join(inputDir, 'xdColExtPosts.png'), dpi=120, bbox_inches='tight')
     train = etl.Training(trainSet, clfXd)
     for i, cut in enumerate(cuts):
         if i == 0:
@@ -1534,7 +1537,7 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style=
                                          linestyle=style[i], legendLabel=r'P(Star)={0}'.format(cut),
                                          standardized=False, magRange=(18.5, 25.0),
                                          kargsPred={'threshold': cut}, colExt=True)
-    figScores.savefig(os.path.join(sgsDir, 'xdColExtScores.png'), dpi=120, bbox_inches='tight')
+    figScores.savefig(os.path.join(inputDir, 'xdColExtScores.png'), dpi=120, bbox_inches='tight')
     figBias = plt.figure(figsize=(24, 18), dpi=120)
     magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
     colNames = ['g-r', 'r-i', 'i-z', 'z-y']
@@ -1560,7 +1563,7 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style=
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    figBias.savefig(os.path.join(sgsDir, 'xdColExtBias.png'), dpi=120, bbox_inches='tight')
+    figBias.savefig(os.path.join(inputDir, 'xdColExtBias.png'), dpi=120, bbox_inches='tight')
 
 
 def xdColExtFitScoresComb(trainClfs=True, fontSize=18, cuts=[0.1, 0.5, 0.9], style=['--', '-', ':']):
@@ -2250,11 +2253,11 @@ def makeRachelPlots(depth=depth, fontSize=18):
     predHsc = cat.get('iclassification_extendedness')
     ids = cat.get('id2')
     clfHsc = etl.ClfHsc(ids, predHsc)
-    with open(os.path.join(sgsDir, 'hscClf{0}.pkl'.format(depth)), 'w') as f:
+    with open(os.path.join(inputDir, 'hscClf{0}.pkl'.format(depth)), 'w') as f:
         pickle.dump(clfHsc, f)
     trainSet = etl.extractTrainSet(cat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True,
                                    mode='colors', concatBands=False, fromDB=True)
-    with open(os.path.join(sgsDir, 'hscClass{0}.pkl'.format(depth)), 'w') as f:
+    with open(os.path.join(inputDir, 'hscClass{0}.pkl'.format(depth)), 'w') as f:
         pickle.dump(trainSet, f)
     X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
     gals = np.logical_not(Y)
@@ -2389,7 +2392,7 @@ def makeRachelPlots(depth=depth, fontSize=18):
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
 
-    fig.savefig(os.path.join(sgsDir, 'xdHscComp{0}.png'.format(depth)), dpi=120, bbox_inches='tight')
+    fig.savefig(os.path.join(inputDir, 'xdHscComp{0}.png'.format(depth)), dpi=120, bbox_inches='tight')
 
 if __name__ == '__main__':
     # cutsPlots()

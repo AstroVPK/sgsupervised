@@ -9,13 +9,12 @@ import fsButler.utils as fsUtils
 
 depth = 'udeepwide'
 
-sgsDir = os.path.join(os.environ['EUPS_PATH'], '..', '..', 'sgs')  # sgsDir should point at the directory
-# that Alexii Leauthaud's catalog lives in. Assuming that we are using lsstsw to build the stack and that
-# Alexii Leauthaud's catalog lives in a directory called sgs that lies at the same-tree level as lsstsw, we
-# use EUPS_PATH to get the location of sgs.
-selectSG = os.path.join(sgsDir, 'cosmos_sg_all.fits')  # Alexii's catalog
-inputFile = os.path.join(sgsDir, '%s.csv'%(depth))  # Reduction of the COSMOS field
-outputFile = os.path.join(sgsDir, '%sHscClass.fits'%(depth))
+# We assume the input data is in the same directory as this file
+inputDir = os.path.dirname(os.path.abspath(__file__))
+
+selectSG = os.path.join(inputDir, 'cosmos_sg_all.fits')  # Alexii's catalog
+inputFile = os.path.join(inputDir, '%s.csv'%(depth))  # Reduction of the COSMOS field
+outputFile = os.path.join(inputDir, '%sHscClass.fits'%(depth))
 
 with open(inputFile) as f:
     for i, l in enumerate(f):

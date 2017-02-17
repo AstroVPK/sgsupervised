@@ -7,12 +7,12 @@ import supervisedEtl as etl
 
 depth = 'udeepwide'
 
-# sgsDir should point at a directory called sgs.
-# Assuming that the user is using lsstsw to build the lsst stack, and that the sgs folder is located at the
-# same level as the lsstsw folder, the we use the EUPS_PATH environment variable to get the location of sgs.
-sgsDir = os.path.join(os.environ['EUPS_PATH'], '..', '..', 'sgs')
-matchedCatFile = os.path.join(sgsDir, '%sHscClass.fits'%(depth))
-trainSetFile = os.path.join(sgsDir, '%sTrainSet.pkl'%(depth))
+# Assume the input data lives in the ``input`` directory located relative to
+# this file. Obviously, this is an ugly hack.
+inputDir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "input")
+
+matchedCatFile = os.path.join(inputDir, '%sHscClass.fits'%(depth))
+trainSetFile = os.path.join(inputDir, '%sTrainSet.pkl'%(depth))
 
 matchedCat = afwTable.SimpleCatalog.readFits(matchedCatFile)
 trainSet = etl.extractTrainSet(matchedCat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True,
