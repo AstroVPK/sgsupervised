@@ -5,7 +5,7 @@ import lsst.afw.table as afwTable
 
 import supervisedEtl as etl
 
-depth = 'deep'
+depth = 'udeepwide'
 
 # sgsDir should point at a directory called sgs.
 # Assuming that the user is using lsstsw to build the lsst stack, and that the sgs folder is located at the
