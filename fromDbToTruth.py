@@ -7,7 +7,7 @@ import lsst.afw.table as afwTable
 
 import fsButler.utils as fsUtils
 
-depth = 'udeep'
+depth = 'udeepwide'
 
 sgsDir = os.path.join(os.environ['EUPS_PATH'], '..', '..', 'sgs')  # sgsDir should point at the directory
 # that Alexii Leauthaud's catalog lives in. Assuming that we are using lsstsw to build the stack and that
