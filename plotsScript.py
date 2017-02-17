@@ -8,20 +8,26 @@ from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from scipy.integrate import cumtrapz
 import pyfits
+
 from sklearn.grid_search import GridSearchCV
 from sklearn.svm import SVC, LinearSVC
 from sklearn.neighbors.kde import KernelDensity
 from astroML.plotting.tools import draw_ellipse
 
+import lsst.afw.table as afwTable
+import lsst.pex.exceptions
+
 import supervisedEtl as etl
 import dGauss
-
-import lsst.afw.table as afwTable
-from lsst.pex.exceptions import LsstCppException
-
 import utils
 
-import sgSVM as sgsvm
+depth = 'udeep'
+
+sgsDir = os.path.join(os.environ['EUPS_PATH'], '..', '..', 'sgs')
+matchedCatFile = os.path.join(sgsDir, '%sHscClass.fits'%(depth))
+trainSetFile = os.path.join(sgsDir, '%sTrainSet.pkl'%(depth))
+classifierFile = os.path.join(sgsDir, '%sClfsColsExt.pkl'%(depth))
+
 
 def cutsPlots():
     fontSize = 18
@@ -29,22 +35,24 @@ def cutsPlots():
     nBins = 30
     cuts = [0.001, 0.01, 0.02]
     style = ['--', '-', ':']
-    with open('trainSet.pkl', 'rb') as f:
+    with open(trainSetFile, 'rb') as f:
         trainSet = pickle.load(f)
-    X, Y = trainSet.getTrainSet()
+    X, XErr, Y = trainSet.getTrainSet()
     clf = LinearSVC()
     clf.fit(X, Y)
     training = etl.Training(trainSet, clf)
     training.setPhysicalCut(cuts[0])
-    figScores = training.plotScores(nBins=nBins, magRange=magRange, linestyle=style[0], legendLabel='Cut={0}'.format(cuts[0]), fontSize=fontSize)
+    figScores = training.plotScores(nBins=nBins, magRange=magRange, linestyle=style[0],
+                                    legendLabel='Cut={0}'.format(cuts[0]), fontSize=fontSize)
     for i in range(1, len(cuts)):
         training.setPhysicalCut(cuts[i])
-        figScores = training.plotScores(nBins=nBins, magRange=magRange, fig=figScores, linestyle=style[i],\
+        figScores = training.plotScores(nBins=nBins, magRange=magRange, fig=figScores, linestyle=style[i],
                                         legendLabel='Cut={0}'.format(cuts[i]), fontSize=fontSize)
     for ax in figScores.get_axes():
         ax.legend(loc='lower left', fontsize=fontSize)
     figExtMag = plt.figure()
-    X, Y = trainSet.getTestSet(standardized=False); mags = trainSet.getTestMags()
+    X, Y = trainSet.getTestSet(standardized=False)
+    mags = trainSet.getTestMags()
     for i in range(len(mags)):
         if Y[i]:
             plt.plot(mags[i], X[i], marker='.', markersize=1, color='blue')
@@ -1454,8 +1462,9 @@ def xdColorFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style =
             tick.label.set_fontsize(fontSize)
     figBias.savefig('/u/garmilla/Desktop/xdColsOnlyBias.png', dpi=120, bbox_inches='tight')
 
-def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '-', ':']):
-    with open('trainSet.pkl', 'rb') as f:
+
+def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style=['--', '-', ':']):
+    with open(trainSetFile, 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     if trainClfs:
@@ -1469,11 +1478,11 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             clf = dGauss.XDClf(ngStar=ngStar, ngGal=ngGal)
             clf.fit(X[good], XErr[good], Y[good])
             clfs.append(clf)
-        print "Finished training, dumping resutls in clsColsExt.pkl"
-        with open('clfsColsExt.pkl', 'wb') as f:
+        print 'Finished training, dumping resutls in %s'%(classifierFile)
+        with open(classifierFile, 'wb') as f:
             pickle.dump(clfs, f)
     else:
-        with open('clfsColsExt.pkl', 'rb') as f:
+        with open(classifierFile, 'rb') as f:
             clfs = pickle.load(f)
     X, XErr, Y = trainSet.genColExtTrainSet(mode='test')
     mags = trainSet.getTestMags(band='i')
@@ -1510,19 +1519,22 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    dirHome = os.path.expanduser('~')
-    figPosts.savefig(os.path.join(dirHome, 'Desktop/xdColExtPosts.png'), dpi=120, bbox_inches='tight')
+    figPosts.savefig(os.path.join(sgsDir, 'xdColExtPosts.png'), dpi=120, bbox_inches='tight')
     train = etl.Training(trainSet, clfXd)
     for i, cut in enumerate(cuts):
         if i == 0:
-            figScores = train.plotScores(sType='test', xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle=style[i],
-                                         legendLabel=r'P(Star)={0}'.format(cut), standardized=False, magRange=(18.5, 25.0),
-                                         suptitle=r'P(Star|Colors+Extendedness) full depth', kargsPred={'threshold': cut}, colExt=True)
-        else:
-            figScores = train.plotScores(sType='test', fig=figScores, xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth', linestyle=style[i],
-                                         legendLabel=r'P(Star)={0}'.format(cut), standardized=False, magRange=(18.5, 25.0),
+            figScores = train.plotScores(sType='test', xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth',
+                                         linestyle=style[i], legendLabel=r'P(Star)={0}'.format(cut),
+                                         standardized=False, magRange=(18.5, 25.0),
+                                         suptitle=r'P(Star|Colors+Extendedness) full depth',
                                          kargsPred={'threshold': cut}, colExt=True)
-    figScores.savefig(os.path.join(dirHome, 'Desktop/xdColExtScores.png'), dpi=120, bbox_inches='tight')
+        else:
+            figScores = train.plotScores(sType='test', fig=figScores,
+                                         xlabel=r'$\mathrm{Mag}_{cmodel}$ HSC-I full depth',
+                                         linestyle=style[i], legendLabel=r'P(Star)={0}'.format(cut),
+                                         standardized=False, magRange=(18.5, 25.0),
+                                         kargsPred={'threshold': cut}, colExt=True)
+    figScores.savefig(os.path.join(sgsDir, 'xdColExtScores.png'), dpi=120, bbox_inches='tight')
     figBias = plt.figure(figsize=(24, 18), dpi=120)
     magString = r'$\mathrm{Mag}_{cmodel}$ HSC-I'
     colNames = ['g-r', 'r-i', 'i-z', 'z-y']
@@ -1536,8 +1548,8 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             ax.set_ylabel(colNames[j-i*3], fontsize=fontSize)
             ax.set_xlim(colLims[j-i*3-1])
             ax.set_ylim(colLims[j-i*3])
-            im = ax.scatter(X[:, j-i*3-1][good], X[:, j-i*3][good], marker='.', s=10, c=posteriors[good], vmin=0.0, vmax=1.0,
-                            edgecolors='none')
+            im = ax.scatter(X[:, j-i*3-1][good], X[:, j-i*3][good], marker='.', s=10, c=posteriors[good],
+                            vmin=0.0, vmax=1.0, edgecolors='none')
         bounds = ax.get_position().bounds
         cax = figBias.add_axes([0.93, bounds[1], 0.015, bounds[3]])
         cb = plt.colorbar(im, cax=cax)
@@ -1548,10 +1560,11 @@ def xdColExtFitScores(trainClfs=False, fontSize=18, cuts=[0.1, 0.5, 0.9], style 
             tick.label.set_fontsize(fontSize)
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
-    figBias.savefig(os.path.join(dirHome, 'Desktop/xdColExtBias.png'), dpi=120, bbox_inches='tight')
+    figBias.savefig(os.path.join(sgsDir, 'xdColExtBias.png'), dpi=120, bbox_inches='tight')
 
-def xdColExtFitScoresComb(trainClfs=True, fontSize=18, cuts=[0.1, 0.5, 0.9], style = ['--', '-', ':']):
-    with open('trainSet.pkl', 'rb') as f:
+
+def xdColExtFitScoresComb(trainClfs=True, fontSize=18, cuts=[0.1, 0.5, 0.9], style=['--', '-', ':']):
+    with open(trainSetFile, 'rb') as f:
         trainSet = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     if trainClfs:
@@ -2096,7 +2109,7 @@ def makeCosmosWidePlots(band='i', size=100000, fontSize=18):
         try:
             catName = '/scr/depot0/garmilla/HSC/matchS15BWide{0}.fits'.format(name)
             cat = afwTable.SimpleCatalog.readFits(catName)
-        except LsstCppException:
+        except lsst.pex.exceptions.Exception:
             catName = '/home/jose/Data/matchS15BWide{0}.fits'.format(name)
             cat = afwTable.SimpleCatalog.readFits(catName)
         axScatter = figPhot.add_subplot(2, 3, i+1)
@@ -2218,36 +2231,24 @@ def cosmosWideSvmScores(trainXd=False, trainSvm=False, fontSize=18):
                                      xlabel=r'{0} HSC-I Wide {1}'.format(_strMag, name), linestyle='--',
                                      legendLabel=r'SVM', standardized=False, magRange=(18.5, 25.0), svm=True)
         dirHome = os.path.expanduser('~')
-        figScores.savefig(os.path.join(dirHome, 'Desktop/cosmosWideSvmScores{0}.png').format(name), dpi=120, bbox_inches='tight')
+        figScores.savefig(os.path.join(dirHome, 'Desktop/cosmosWideSvmScores{0}.png').format(name),
+                          dpi=120, bbox_inches='tight')
 
 
-def makeRachelPlots(depth='udeep', fontSize=18):
-    with open('clfsColsExt.pkl', 'rb') as f:
+def makeRachelPlots(depth=depth, fontSize=18):
+    with open(classifierFile, 'rb') as f:
         clfs = pickle.load(f)
     magBins = [(18.0, 22.0), (22.0, 24.0), (24.0, 25.0), (25.0, 26.0)]
     clfXd = dGauss.XDClfs(clfs=clfs, magBins=magBins)
-    if depth == 'udeep':
-        suptitle = 'Ultra Deep'
-        try:
-            cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/udeepHscClass.fits')
-        except LsstCppException:
-            cat = afwTable.SimpleCatalog.readFits('/home/jose/Data/udeepHscClass.fits')
-    elif depth == 'wide':
-        suptitle = 'Wide'
-        try:
-            cat = afwTable.SimpleCatalog.readFits('/scr/depot0/garmilla/HSC/wideHscClass.fits')
-        except LsstCppException:
-            cat = afwTable.SimpleCatalog.readFits('/home/jose/Data/wideHscClass.fits')
-    else:
-        raise ValueError('I only have udeep and wide depths.')
+    cat = afwTable.SimpleCatalog.readFits(matchedCatFile)
     depth = depth[0].upper() + depth[1:]
-    predHsc = cat.get('iclassification.extendedness')
-    ids = cat.get('id.2')
+    predHsc = cat.get('iclassification_extendedness')
+    ids = cat.get('id2')
     clfHsc = etl.ClfHsc(ids, predHsc)
     with open('hscClf{0}.pkl'.format(depth), 'w') as f:
         pickle.dump(clfHsc, f)
-    trainSet = etl.extractTrainSet(cat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True, mode='colors', concatBands=False,
-                                   fromDB=True)
+    trainSet = etl.extractTrainSet(cat, inputs=['mag'], bands=['g', 'r', 'i', 'z', 'y'], withErr=True,
+                                   mode='colors', concatBands=False, fromDB=True)
     with open('hscClass{0}.pkl'.format(depth), 'w') as f:
         pickle.dump(trainSet, f)
     X, XErr, Y = trainSet.genColExtTrainSet(mode='all')
@@ -2339,22 +2340,25 @@ def makeRachelPlots(depth='udeep', fontSize=18):
     axStar.set_ylim((0.0, 1.0))
     axGal.set_xlim((18.0, 25.0))
     axGal.set_xlim((18.0, 25.0))
-    fig.suptitle(suptitle, fontsize=fontSize)
+    fig.suptitle(depth, fontsize=fontSize)
 
-    #axGal.step(magGridCenters, compGalsXd1, color='red', linestyle='-.', label='P(Star)=0.1 Cut Completeness')
-    #axGal.step(magGridCenters, purityGalsXd1, color='blue', linestyle='-.', label='P(Star)=0.1 Cut Purity')
-    #axStar.step(magGridCenters, compStarsXd1, color='red', linestyle='-.', label='P(Star)=0.1 Cut Completeness')
-    #axStar.step(magGridCenters, purityStarsXd1, color='blue', linestyle='-.', label='P(Star)=0.1 Cut Purity')
+    axGal.step(magGridCenters, compGalsXd5,
+               color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
+    axGal.step(magGridCenters, purityGalsXd5,
+               color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
+    axStar.step(magGridCenters, compStarsXd5,
+                color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
+    axStar.step(magGridCenters, purityStarsXd5,
+                color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
 
-    axGal.step(magGridCenters, compGalsXd5, color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
-    axGal.step(magGridCenters, purityGalsXd5, color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
-    axStar.step(magGridCenters, compStarsXd5, color='red', linestyle='-', label='P(Star)=0.5 Cut Completeness')
-    axStar.step(magGridCenters, purityStarsXd5, color='blue', linestyle='-', label='P(Star)=0.5 Cut Purity')
-
-    axGal.step(magGridCenters, compGalsXd9, color='red', linestyle='--', label='P(Star)=0.9 Cut Completeness')
-    axGal.step(magGridCenters, purityGalsXd9, color='blue', linestyle='--', label='P(Star)=0.9 Cut Purity')
-    axStar.step(magGridCenters, compStarsXd9, color='red', linestyle='--', label='P(Star)=0.9 Cut Completeness')
-    axStar.step(magGridCenters, purityStarsXd9, color='blue', linestyle='--', label='P(Star)=0.9 Cut Purity')
+    axGal.step(magGridCenters, compGalsXd9,
+               color='red', linestyle='--', label='P(Star)=0.9 Cut Completeness')
+    axGal.step(magGridCenters, purityGalsXd9,
+               color='blue', linestyle='--', label='P(Star)=0.9 Cut Purity')
+    axStar.step(magGridCenters, compStarsXd9,
+                color='red', linestyle='--', label='P(Star)=0.9 Cut Completeness')
+    axStar.step(magGridCenters, purityStarsXd9,
+                color='blue', linestyle='--', label='P(Star)=0.9 Cut Purity')
 
     axGal.step(magGridCenters, compGalsHsc, color='red', linestyle=':', label='hscPipe Completeness')
     axGal.step(magGridCenters, purityGalsHsc, color='blue', linestyle=':', label='hscPipe Purity')
@@ -2370,36 +2374,39 @@ def makeRachelPlots(depth='udeep', fontSize=18):
         for tick in ax.yaxis.get_major_ticks():
             tick.label.set_fontsize(fontSize)
 
-    dirHome = os.path.expanduser('~')
-    fig.savefig(os.path.join(dirHome, 'Desktop/xdHscComp{0}.png'.format(depth)), dpi=120, bbox_inches='tight')
+    fig.savefig(os.path.join(sgsDir, 'xdHscComp{0}.png'.format(depth)), dpi=120, bbox_inches='tight')
 
 if __name__ == '__main__':
-    #cutsPlots()
-    #colExPlots()
-    #rcPlots(rerun='Cosmos1')
-    #rcPlots(rerun='Cosmos1', snrType='mag', xRange=(23.0, 24.5), asLogX=False, xlim=(18.0, 26.0), xlabel='magnitude', polyOrder=3,
-    #        featuresCuts={1:(None, None)})
-    #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0), yRange=(-0.1, 0.50),
-    #         ylabel='Mag_psf-Mag_cmodel', featuresCuts={1:(None, 0.1)})
-    #rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', snrType='mag', ylim=(-0.02, 0.1), xRange=(18.0, 25.2), yRange=(-0.1, 0.50),
-    #        ylabel='mag_psf-mag_cmodel (HSC-I deep)', featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0),
-    #        xlabel='mag_cmodel (HSC-I deep)')
-    #magExtPlots()
-    #extCutRoc()
-    #highPostStarsShape(trainClfs=False)
-    #colExtStarsTom()
-    #plt.show()
-    #hstVsHscSize()
-    #extMomentsCompPlots()
-    #xdFitEllipsePlots()
-    #plotPostMarginals()
-    #xdColorFitScores()
-    #extCorrPlot()
-    #peterPlot()
-    #xdColExtFitScores()
-    #xdColExtSvmScores(trainSvm=True)
-    #makeCosmosWidePlots()
-    #makeCosmosWideScoresPlot()
-    #cosmosWideSvmScores()
-    #makeRachelPlots(depth='udeep')
-    xdColExtFitScoresComb()
+    # cutsPlots()
+    # colExPlots()
+    # rcPlots(rerun='Cosmos1')
+    # rcPlots(rerun='Cosmos1', snrType='mag', xRange=(23.0, 24.5), asLogX=False, xlim=(18.0, 26.0),
+    #          xlabel='magnitude', polyOrder=3, featuresCuts={1:(None, None)})
+    # rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', ylim=(-0.02, 0.1), xRange=(25.0, 2000.0),
+    #          yRange=(-0.1, 0.50), ylabel='Mag_psf-Mag_cmodel', featuresCuts={1:(None, 0.1)})
+    # rcPlots(rerun='Cosmos1', polyOrder=3, extType='ext', snrType='mag', ylim=(-0.02, 0.1),
+    #         xRange=(18.0, 25.2), yRange=(-0.1, 0.50), ylabel='mag_psf-mag_cmodel (HSC-I deep)',
+    #          featuresCuts={1:(None, 0.1)}, asLogX=False, xlim=(18.0, 27.0),
+    #          xlabel='mag_cmodel (HSC-I deep)')
+    # magExtPlots()
+    # extCutRoc()
+    # highPostStarsShape(trainClfs=False)
+    # colExtStarsTom()
+    # plt.show()
+    # hstVsHscSize()
+    # extMomentsCompPlots()
+    # xdFitEllipsePlots()
+    # plotPostMarginals()
+    # xdColorFitScores()
+    # extCorrPlot()
+    # peterPlot()
+    # xdColExtFitScores(trainClfs=True)
+    # xdColExtSvmScores(trainSvm=True)
+    # makeCosmosWidePlots()
+    # makeCosmosWideScoresPlot()
+    # cosmosWideSvmScores()
+    # makeRachelPlots(depth='udeep')
+    # xdColExtFitScoresComb()
+
+    # xdColExtFitScores()
+    makeRachelPlots(depth='udeep')
