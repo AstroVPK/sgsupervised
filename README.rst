@@ -34,8 +34,7 @@ The procedure for using SGS is:
 #. Train an instance of the SGS classifier:
 
     #. Run an SQL query (such as the sample query in SQL.txt) on the HSC database to get a list of objects along with properties such as fluxes and extendedness i.e. produce ``<depth>.csv``. Note that the depth is set in the ``from`` statement of the query line i.e. edit the ``from`` statement in order to select a different depth.
-    #. Run ``fromDbToTruth.py`` to match the HSC detections against the HST master list and produce ``<depth>HscClass.fits``. This script takes no arguments - the depth is selected by editing the ``depth`` variable in the script.
-    #. Use ``makeTrainSet.py`` to apply further cuts and produce ``<depth>TrainSet.pkl``. This script takes no arguments - the depth is selected by editing the ``depth`` variable in the script.
+    #. Run ``fromDbToTruth.py`` to match the HSC detections against the HST master list and produce ``<depth>HscClass.fits`` and ``<depth>TrainSet.pkl``. This script takes no arguments - the depth is selected by editing the ``depth`` variable in the script.
     #. Run the function ``xdColExtFitScores(trainClfs=True)`` in ``plotsScripts.py`` to produce the SGS classifier object which gets written to disk in ``<depth>ClfsColsExt.pkl``. This script takes no arguments - the depth is selected by editing the ``depth`` variable in the script.
 
 #. Use an instance of the SGS classifier to classify objects:
